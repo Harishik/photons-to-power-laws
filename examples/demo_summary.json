@@ -1,0 +1,10 @@
+{
+  "injected_alpha": 1.1,
+  "recovered_alpha": 1.1065465941509602,
+  "recovered_alpha_err": 0.0038539184651881185,
+  "deviation": 0.00654659415096015,
+  "n_sigma": 1.6986851720124794,
+  "reduced_chi2": 1.0311424969465488,
+  "n_epochs": 10,
+  "status": "PASS"
+}

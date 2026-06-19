@@ -59,7 +59,7 @@ This project is designed to make that transformation explicit. It is not just a 
 ## Pipeline architecture
 
 <p align="center">
-  <img src="docs/assets/pipeline_architecture.svg" alt="Updated Photons to Power Laws pipeline architecture" width="100%">
+  <img src="docs/assets/4E2BC60F-9D5B-40CC-826A-D63C54B5FB6B.png" alt="Updated Photons to Power Laws pipeline architecture" width="100%">
 </p>
 
 The architecture follows a modular left-to-right reduction flow. Each Python module produces a data product consumed by the next stage, while the synthetic generator supports end-to-end validation with known ground-truth `α`.

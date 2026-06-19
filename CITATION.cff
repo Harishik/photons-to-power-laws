@@ -1,0 +1,15 @@
+cff-version: 1.2.0
+title: "Decoding the Decay: An Optical Photometry Pipeline for Gamma-Ray Burst Afterglows"
+message: "If you use this software, please cite it as below."
+type: software
+authors:
+  - name: "Photons to Power Laws contributors"
+version: 0.1.0
+date-released: 2026-06-20
+license: MIT
+repository-code: "https://github.com/Harishik/photons-to-power-laws"
+keywords:
+  - astronomy
+  - gamma-ray bursts
+  - photometry
+  - light curves

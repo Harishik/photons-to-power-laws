@@ -2,7 +2,7 @@
 
 # Photons to Power Laws
 
-### An optical photometry pipeline for Gamma-Ray Burst afterglow light curves
+### Decoding the Decay: An Optical Photometry Pipeline for Gamma-Ray Burst Afterglows
 
 From raw telescope frames to calibrated photometry, light-curve construction, and power-law decay fitting.
 

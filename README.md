@@ -58,19 +58,11 @@ This project is designed to make that transformation explicit. It is not just a 
 
 ## Pipeline architecture
 
-```mermaid
-flowchart LR
-    A[Raw science frames] --> B[Bias subtraction]
-    B --> C[Flat-field correction]
-    C --> D[Background estimation]
-    D --> E[Source detection]
-    E --> F[Aperture photometry]
-    F --> G[Reference-star matching]
-    G --> H[Photometric zero point]
-    H --> I[Calibrated afterglow light curve]
-    I --> J[Power-law decay fit]
-    J --> K[Decay index alpha]
-```
+<p align="center">
+  <img src="docs/assets/pipeline_architecture.svg" alt="Updated Photons to Power Laws pipeline architecture" width="100%">
+</p>
+
+The architecture follows a modular left-to-right reduction flow. Each Python module produces a data product consumed by the next stage, while the synthetic generator supports end-to-end validation with known ground-truth `α`.
 
 ## Repository structure
 

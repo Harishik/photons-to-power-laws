@@ -12,7 +12,7 @@ professional GRB literature, implemented with only pip-installable, open tools
 > data and recovers an injected decay index to within the fit error. Real-data
 > adapters are on the roadmap below.
 
-![Recovered afterglow light curve](examples/lightcurve.png)
+![Recovered afterglow light curve](examples/lightcurve.svg)
 
 *Demo output: a synthetic afterglow with injected decay index α = 1.10 is
 recovered as α = 1.11 ± 0.004 (reduced χ² ≈ 1.0).*
@@ -25,8 +25,8 @@ Gamma-Ray Bursts are the most energetic explosions known. Each is followed by a
 rapidly fading **afterglow** — synchrotron emission from a decelerating
 relativistic blast wave — that we can watch across the electromagnetic spectrum.
 In the optical, that afterglow fades roughly as a power law in time,
-`F(t) ∝ t^(-α)`. Measuring the decay index `α` (and any later steepening from a
-*jet break*) is how raw pixels become physics: those slopes test the *closure
+`F(t) ∝ t^(-α)`. Measuring the decay index `α` and any later steepening from a
+*jet break* is how raw pixels become physics. Those slopes test the *closure
 relations* linking the observed behaviour to the microphysics of the shock.
 
 This repository walks through that transformation explicitly and reproducibly,
@@ -49,24 +49,23 @@ Each stage is one self-contained module in `src/grb_afterglow/`:
 | `photometry.py` | Circular-aperture photometry with a local sky annulus and a full CCD-equation error budget. |
 | `zeropoint.py` | Match field stars to a reference catalog; solve a robust photometric zero point. |
 | `lightcurve.py` | A `LightCurve` container with AB magnitude ↔ flux-density conversions. |
-| `fitting.py` | Single and smoothly broken (jet-break) power-law fits via `scipy.curve_fit`. |
+| `fitting.py` | Single and smoothly broken jet-break power-law fits via `scipy.curve_fit`. |
 | `plotting.py` | Publication-style light-curve and zero-point diagnostic figures. |
-| `synthetic.py` | A realistic synthetic-field generator (the "pixels"), with ground truth. |
+| `synthetic.py` | A realistic synthetic-field generator with ground truth. |
 
 ## Quickstart
 
 ```bash
-git clone https://github.com/Harishik/Photons-to-Power-Laws-.git
+git clone https://github.com/Harishik/photons-to-power-laws.git
 cd photons-to-power-laws
-python -m venv .venv && source .venv/bin/activate     # optional
+python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-# Run the whole pipeline on synthetic data and validate the recovered index:
 python scripts/run_demo.py
 ```
 
 You should see per-epoch photometry, a fitted decay index, a PASS/CHECK against
-the injected truth, and figures + a CSV light curve written to `examples/`.
+the injected truth, and figures plus a CSV light curve written to `examples/`.
 
 ### Use it as a library
 
@@ -82,8 +81,6 @@ from grb_afterglow.calibration import load_fits
 raw, hdr = load_fits("science_0001.fits")
 cal = calibrate_frame(raw, master_bias, master_flat)
 sources = detect_sources(cal, fwhm=3.5, threshold_sigma=5.0)
-# ... match to a catalog, solve the zero point, force photometry at the GRB
-#     position, accumulate epochs into a LightCurve, then:
 fit = fit_single_power_law(lc.time, lc.flux, lc.flux_err)
 print(fit.summary())
 ```
@@ -91,26 +88,22 @@ print(fit.summary())
 ## Working with real data
 
 The synthetic generator exists so the project runs with zero downloads and can
-be *validated*. To point the pipeline at real observations, supply your own FITS
+be validated. To point the pipeline at real observations, supply your own FITS
 frames and a real reference catalog. Good public starting points:
 
-- **Swift/UVOT GRB afterglow archive** (HEASARC) — UV/optical FITS images of
-  hundreds of bursts.
-- **Pan-STARRS1 DR2** or **SDSS** — field-star reference magnitudes for the
-  zero point (query via VizieR / `astroquery`).
-- **Gaia** — astrometric reference for solving image coordinates (WCS).
+- **Swift/UVOT GRB afterglow archive** for UV/optical FITS images of bursts.
+- **Pan-STARRS1 DR2** or **SDSS** for field-star reference magnitudes.
+- **Gaia** for astrometric reference and image coordinate solving.
 
-Real-world refinements you will likely want (and which are on the roadmap):
-astrometric plate-solving (`astrometry.net`), image stacking for faint epochs,
-PSF photometry, host-galaxy subtraction (image differencing), and **forced
-photometry at the GRB position** — already demonstrated in the demo, and the
-standard approach once the afterglow fades below the detection threshold.
+Real-world refinements you will likely want include astrometric plate-solving,
+image stacking for faint epochs, PSF photometry, host-galaxy subtraction, and
+forced photometry at the GRB position.
 
 ## Roadmap
 
 - [x] Core reduction → photometry → light curve → power-law fit
 - [x] Synthetic data generator with ground truth + end-to-end validation
-- [x] Single and broken (jet-break) power-law fitting
+- [x] Single and broken jet-break power-law fitting
 - [ ] `astroquery` adapters for Pan-STARRS / SDSS / Gaia reference catalogs
 - [ ] WCS / sky-coordinate matching path wired into the demo
 - [ ] PSF photometry option (`photutils.psf`)
@@ -130,17 +123,14 @@ pytest -q
 
 ## Contributing
 
-Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). This is an
-open, educational project; clarity is valued as highly as correctness.
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
 
 ## Acknowledgments
 
 Built on the [Astropy](https://www.astropy.org/) ecosystem and
 [Photutils](https://photutils.readthedocs.io/). The reduction sequence mirrors
-standard practice described across the GRB afterglow literature (e.g. real
-pipelines calibrating against Pan-STARRS1 and fitting `F ∝ t^(-α)`). If you use
-Photutils in published work, please cite it per its documentation.
+standard practice described across the GRB afterglow literature.

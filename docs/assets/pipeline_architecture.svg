@@ -1,0 +1,170 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1448" height="1086" viewBox="0 0 1448 1086" role="img" aria-label="Photons to Power Laws updated pipeline architecture">
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="4" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,8 L12,4 z" fill="#0b376d"/></marker>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%"><feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#0b1f3a" flood-opacity="0.14"/></filter>
+  </defs>
+  <rect width="100%" height="100%" fill="#fbfdff"/>
+
+  <g transform="translate(96,26)">
+    <circle cx="20" cy="24" r="8" fill="#5e35b1"/>
+    <g stroke="#5e35b1" stroke-width="2" opacity=".75">
+      <line x1="20" y1="4" x2="20" y2="44"/><line x1="0" y1="24" x2="40" y2="24"/>
+      <line x1="6" y1="10" x2="34" y2="38"/><line x1="34" y1="10" x2="6" y2="38"/>
+    </g>
+    <path d="M58 25 C91 5, 105 48, 139 25 C158 12, 171 21, 195 25" fill="none" stroke="#7e57c2" stroke-width="4" stroke-linecap="round"/>
+    <circle cx="210" cy="24" r="4" fill="#90caf9"/>
+  </g>
+
+  <text x="724" y="78" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="58" font-weight="800" fill="#051a43">Photons to Power Laws</text>
+  <text x="724" y="122" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="22" font-style="italic" fill="#52647a">Updated Pipeline Architecture for GRB Optical Afterglow Photometry and Light-Curve Fitting</text>
+
+  <!-- Main pipeline cards -->
+  <g font-family="Inter, Arial, sans-serif" font-size="13" fill="#0b1b35">
+    <g transform="translate(18,155)" filter="url(#shadow)">
+      <rect width="152" height="505" rx="12" fill="#eaf4ff" stroke="#2f80ed" stroke-width="1.8"/>
+      <circle cx="76" cy="28" r="17" fill="#2f80ed"/><text x="76" y="35" text-anchor="middle" font-size="22" font-weight="800" fill="#fff">1</text>
+      <text x="76" y="72" text-anchor="middle" font-size="18" font-weight="800">Data Inputs</text>
+      <ellipse cx="76" cy="128" rx="34" ry="12" fill="#2f80ed"/><rect x="42" y="128" width="68" height="48" fill="#2f80ed"/><ellipse cx="76" cy="176" rx="34" ry="12" fill="#2f80ed"/>
+      <path d="M42,144 C64,158 88,158 110,144 M42,160 C64,174 88,174 110,160" stroke="#fff" stroke-width="3" fill="none"/>
+      <rect x="15" y="215" width="122" height="47" rx="8" fill="#fff" stroke="#2f80ed" stroke-opacity=".45"/><text x="76" y="237" text-anchor="middle">Raw science</text><text x="76" y="253" text-anchor="middle">FITS frames</text>
+      <rect x="15" y="272" width="122" height="47" rx="8" fill="#fff" stroke="#2f80ed" stroke-opacity=".45"/><text x="76" y="301" text-anchor="middle">Bias frames</text>
+      <rect x="15" y="329" width="122" height="47" rx="8" fill="#fff" stroke="#2f80ed" stroke-opacity=".45"/><text x="76" y="358" text-anchor="middle">Flat frames</text>
+      <rect x="15" y="386" width="122" height="47" rx="8" fill="#fff" stroke="#2f80ed" stroke-opacity=".45"/><text x="76" y="408" text-anchor="middle">Reference star</text><text x="76" y="424" text-anchor="middle">catalog</text>
+    </g>
+
+    <g transform="translate(184,155)" filter="url(#shadow)">
+      <rect width="152" height="505" rx="12" fill="#f3edff" stroke="#7e57c2" stroke-width="1.8"/>
+      <circle cx="76" cy="28" r="17" fill="#7e57c2"/><text x="76" y="35" text-anchor="middle" font-size="22" font-weight="800" fill="#fff">2</text>
+      <text x="76" y="72" text-anchor="middle" font-size="18" font-weight="800">Calibration</text>
+      <circle cx="76" cy="148" r="34" fill="#7e57c2" opacity=".9"/><circle cx="76" cy="148" r="13" fill="#fff"/>
+      <rect x="15" y="215" width="122" height="47" rx="8" fill="#fff" stroke="#7e57c2" stroke-opacity=".45"/><text x="76" y="244" text-anchor="middle">Build master bias</text>
+      <rect x="15" y="272" width="122" height="47" rx="8" fill="#fff" stroke="#7e57c2" stroke-opacity=".45"/><text x="76" y="301" text-anchor="middle">Build master flat</text>
+      <rect x="15" y="329" width="122" height="47" rx="8" fill="#fff" stroke="#7e57c2" stroke-opacity=".45"/><text x="76" y="351" text-anchor="middle">Calibrate science</text><text x="76" y="367" text-anchor="middle">frames</text>
+      <rect x="15" y="386" width="122" height="47" rx="8" fill="#fff" stroke="#7e57c2" stroke-dasharray="5 4"/><text x="76" y="415" text-anchor="middle">(raw - bias) / flat</text>
+      <rect x="0" y="471" width="152" height="34" fill="#7e57c2"/><text x="76" y="493" text-anchor="middle" font-size="15" font-weight="800" fill="#fff">calibration.py</text>
+    </g>
+
+    <g transform="translate(350,155)" filter="url(#shadow)">
+      <rect width="152" height="505" rx="12" fill="#eef6ff" stroke="#3f8edc" stroke-width="1.8"/>
+      <circle cx="76" cy="28" r="17" fill="#3f8edc"/><text x="76" y="35" text-anchor="middle" font-size="22" font-weight="800" fill="#fff">3</text>
+      <text x="76" y="65" text-anchor="middle" font-size="17" font-weight="800">Background &amp;</text><text x="76" y="86" text-anchor="middle" font-size="17" font-weight="800">Source Detection</text>
+      <circle cx="76" cy="148" r="38" fill="none" stroke="#3f8edc" stroke-dasharray="4 5" stroke-width="2"/><text x="76" y="158" text-anchor="middle" font-size="36" fill="#3f8edc">★</text>
+      <rect x="15" y="215" width="122" height="47" rx="8" fill="#fff" stroke="#3f8edc" stroke-opacity=".45"/><text x="76" y="237" text-anchor="middle">Estimate 2D</text><text x="76" y="253" text-anchor="middle">background</text>
+      <rect x="15" y="272" width="122" height="47" rx="8" fill="#fff" stroke="#3f8edc" stroke-opacity=".45"/><text x="76" y="294" text-anchor="middle">Detect field</text><text x="76" y="310" text-anchor="middle">sources</text>
+      <rect x="15" y="329" width="122" height="47" rx="8" fill="#fff" stroke="#3f8edc" stroke-opacity=".45"/><text x="76" y="351" text-anchor="middle">Estimate</text><text x="76" y="367" text-anchor="middle">PSF/FWHM</text>
+      <rect x="0" y="471" width="152" height="34" fill="#3f8edc"/><text x="76" y="493" text-anchor="middle" font-size="15" font-weight="800" fill="#fff">detection.py</text>
+    </g>
+
+    <g transform="translate(516,155)" filter="url(#shadow)">
+      <rect width="152" height="505" rx="12" fill="#eefcff" stroke="#35a6b8" stroke-width="1.8"/>
+      <circle cx="76" cy="28" r="17" fill="#35a6b8"/><text x="76" y="35" text-anchor="middle" font-size="22" font-weight="800" fill="#fff">4</text>
+      <text x="76" y="72" text-anchor="middle" font-size="18" font-weight="800">Photometry</text>
+      <circle cx="76" cy="148" r="41" fill="none" stroke="#35a6b8" stroke-dasharray="7 5" stroke-width="2"/><circle cx="76" cy="148" r="27" fill="none" stroke="#35a6b8" stroke-width="2"/><circle cx="76" cy="148" r="13" fill="#35a6b8"/>
+      <rect x="15" y="215" width="122" height="47" rx="8" fill="#fff" stroke="#35a6b8" stroke-opacity=".45"/><text x="76" y="237" text-anchor="middle">Aperture</text><text x="76" y="253" text-anchor="middle">photometry</text>
+      <rect x="15" y="272" width="122" height="47" rx="8" fill="#fff" stroke="#35a6b8" stroke-opacity=".45"/><text x="76" y="294" text-anchor="middle">Local sky</text><text x="76" y="310" text-anchor="middle">annulus</text>
+      <rect x="15" y="329" width="122" height="47" rx="8" fill="#fff" stroke="#35a6b8" stroke-opacity=".45"/><text x="76" y="351" text-anchor="middle">Uncertainty</text><text x="76" y="367" text-anchor="middle">propagation</text>
+      <text x="76" y="423" text-anchor="middle" font-style="italic" fill="#52647a">Source + sky +</text><text x="76" y="441" text-anchor="middle" font-style="italic" fill="#52647a">read noise</text>
+      <rect x="0" y="471" width="152" height="34" fill="#35a6b8"/><text x="76" y="493" text-anchor="middle" font-size="15" font-weight="800" fill="#fff">photometry.py</text>
+    </g>
+
+    <g transform="translate(682,155)" filter="url(#shadow)">
+      <rect width="152" height="505" rx="12" fill="#edf6ff" stroke="#2d7dd2" stroke-width="1.8"/>
+      <circle cx="76" cy="28" r="17" fill="#2d7dd2"/><text x="76" y="35" text-anchor="middle" font-size="22" font-weight="800" fill="#fff">5</text>
+      <text x="76" y="65" text-anchor="middle" font-size="17" font-weight="800">Photometric</text><text x="76" y="86" text-anchor="middle" font-size="17" font-weight="800">Calibration</text>
+      <circle cx="76" cy="148" r="34" fill="none" stroke="#2d7dd2" stroke-width="3"/><line x1="31" y1="148" x2="121" y2="148" stroke="#2d7dd2" stroke-width="3"/><line x1="76" y1="103" x2="76" y2="193" stroke="#2d7dd2" stroke-width="3"/><text x="76" y="158" text-anchor="middle" font-size="34" fill="#2d7dd2">★</text>
+      <rect x="15" y="215" width="122" height="47" rx="8" fill="#fff" stroke="#2d7dd2" stroke-opacity=".45"/><text x="76" y="237" text-anchor="middle">Match reference</text><text x="76" y="253" text-anchor="middle">stars</text>
+      <rect x="15" y="272" width="122" height="47" rx="8" fill="#fff" stroke="#2d7dd2" stroke-opacity=".45"/><text x="76" y="294" text-anchor="middle">Solve photometric</text><text x="76" y="310" text-anchor="middle">zero point</text>
+      <rect x="15" y="329" width="122" height="65" rx="8" fill="#fff" stroke="#2d7dd2" stroke-opacity=".45"/><text x="76" y="351" text-anchor="middle">Calibrate</text><text x="76" y="367" text-anchor="middle">instrumental</text><text x="76" y="383" text-anchor="middle">magnitudes</text>
+      <rect x="0" y="471" width="152" height="34" fill="#2d7dd2"/><text x="76" y="493" text-anchor="middle" font-size="15" font-weight="800" fill="#fff">zeropoint.py</text>
+    </g>
+
+    <g transform="translate(848,155)" filter="url(#shadow)">
+      <rect width="152" height="505" rx="12" fill="#ecfbfb" stroke="#16a6a8" stroke-width="1.8"/>
+      <circle cx="76" cy="28" r="17" fill="#16a6a8"/><text x="76" y="35" text-anchor="middle" font-size="22" font-weight="800" fill="#fff">6</text>
+      <text x="76" y="65" text-anchor="middle" font-size="17" font-weight="800">Afterglow</text><text x="76" y="86" text-anchor="middle" font-size="17" font-weight="800">Measurement</text>
+      <circle cx="76" cy="148" r="20" fill="#16a6a8" opacity=".75"/><circle cx="76" cy="148" r="39" fill="none" stroke="#16a6a8" stroke-width="3"/><line x1="24" y1="148" x2="128" y2="148" stroke="#16a6a8" stroke-width="3"/><line x1="76" y1="96" x2="76" y2="200" stroke="#16a6a8" stroke-width="3"/>
+      <rect x="15" y="215" width="122" height="58" rx="8" fill="#fff" stroke="#16a6a8" stroke-opacity=".45"/><text x="76" y="237" text-anchor="middle">Forced photometry</text><text x="76" y="253" text-anchor="middle">at GRB position</text>
+      <rect x="15" y="285" width="122" height="65" rx="8" fill="#fff" stroke="#16a6a8" stroke-opacity=".45"/><text x="76" y="307" text-anchor="middle">Per-epoch</text><text x="76" y="323" text-anchor="middle">calibrated</text><text x="76" y="339" text-anchor="middle">magnitude</text>
+      <rect x="15" y="362" width="122" height="58" rx="8" fill="#fff" stroke="#16a6a8" stroke-opacity=".45"/><text x="76" y="384" text-anchor="middle">Magnitude to</text><text x="76" y="400" text-anchor="middle">flux conversion</text>
+      <rect x="0" y="471" width="152" height="34" fill="#16a6a8"/><text x="76" y="493" text-anchor="middle" font-size="15" font-weight="800" fill="#fff">lightcurve.py</text>
+    </g>
+
+    <g transform="translate(1014,155)" filter="url(#shadow)">
+      <rect width="152" height="505" rx="12" fill="#edf6ff" stroke="#2d7dd2" stroke-width="1.8"/>
+      <circle cx="76" cy="28" r="17" fill="#2d7dd2"/><text x="76" y="35" text-anchor="middle" font-size="22" font-weight="800" fill="#fff">7</text>
+      <text x="76" y="65" text-anchor="middle" font-size="17" font-weight="800">Light Curve</text><text x="76" y="86" text-anchor="middle" font-size="17" font-weight="800">Construction</text>
+      <polyline points="34,172 58,156 80,150 102,128 120,108" fill="none" stroke="#2d7dd2" stroke-width="5" stroke-linecap="round"/><circle cx="34" cy="172" r="6" fill="#2d7dd2"/><circle cx="58" cy="156" r="6" fill="#2d7dd2"/><circle cx="80" cy="150" r="6" fill="#2d7dd2"/><circle cx="102" cy="128" r="6" fill="#2d7dd2"/><circle cx="120" cy="108" r="6" fill="#2d7dd2"/>
+      <rect x="15" y="215" width="122" height="47" rx="8" fill="#fff" stroke="#2d7dd2" stroke-opacity=".45"/><text x="76" y="237" text-anchor="middle">Time-series</text><text x="76" y="253" text-anchor="middle">assembly</text>
+      <rect x="15" y="272" width="122" height="47" rx="8" fill="#fff" stroke="#2d7dd2" stroke-opacity=".45"/><text x="76" y="294" text-anchor="middle">Flux and error</text><text x="76" y="310" text-anchor="middle">arrays</text>
+      <rect x="15" y="329" width="122" height="47" rx="8" fill="#fff" stroke="#2d7dd2" stroke-opacity=".45"/><text x="76" y="351" text-anchor="middle">Export CSV /</text><text x="76" y="367" text-anchor="middle">diagnostics</text>
+      <rect x="0" y="471" width="152" height="34" fill="#2d7dd2"/><text x="76" y="493" text-anchor="middle" font-size="15" font-weight="800" fill="#fff">lightcurve.py</text>
+    </g>
+
+    <g transform="translate(1180,155)" filter="url(#shadow)">
+      <rect width="152" height="505" rx="12" fill="#fff3e6" stroke="#f57c00" stroke-width="1.8"/>
+      <circle cx="76" cy="28" r="17" fill="#f57c00"/><text x="76" y="35" text-anchor="middle" font-size="22" font-weight="800" fill="#fff">8</text>
+      <text x="76" y="72" text-anchor="middle" font-size="18" font-weight="800">Model Fitting</text>
+      <path d="M28,182 L28,108 M28,182 L128,182" stroke="#f57c00" stroke-width="3" fill="none"/><polyline points="38,128 58,138 84,156 106,170 124,172" fill="none" stroke="#f57c00" stroke-width="5" stroke-linecap="round"/>
+      <rect x="15" y="215" width="122" height="47" rx="8" fill="#fff" stroke="#f57c00" stroke-opacity=".45"/><text x="76" y="237" text-anchor="middle">Single power-law</text><text x="76" y="253" text-anchor="middle">fit</text>
+      <rect x="15" y="272" width="122" height="47" rx="8" fill="#fff" stroke="#f57c00" stroke-opacity=".45"/><text x="76" y="294" text-anchor="middle">Broken power-law</text><text x="76" y="310" text-anchor="middle">fit</text>
+      <rect x="15" y="329" width="122" height="47" rx="8" fill="#fff" stroke="#f57c00" stroke-opacity=".45"/><text x="76" y="351" text-anchor="middle">Recover decay</text><text x="76" y="367" text-anchor="middle">index alpha</text>
+      <rect x="15" y="386" width="122" height="65" rx="8" fill="#fff" stroke="#f57c00" stroke-opacity=".45"/><text x="76" y="408" text-anchor="middle">Estimate fit</text><text x="76" y="424" text-anchor="middle">uncertainty and</text><text x="76" y="440" text-anchor="middle">reduced χ²</text>
+      <rect x="0" y="471" width="152" height="34" fill="#f57c00"/><text x="76" y="493" text-anchor="middle" font-size="15" font-weight="800" fill="#fff">fitting.py</text>
+    </g>
+
+    <g transform="translate(1346,155)" filter="url(#shadow)">
+      <rect width="152" height="505" rx="12" fill="#f1faee" stroke="#58a832" stroke-width="1.8"/>
+      <circle cx="76" cy="28" r="17" fill="#58a832"/><text x="76" y="35" text-anchor="middle" font-size="22" font-weight="800" fill="#fff">9</text>
+      <text x="76" y="72" text-anchor="middle" font-size="18" font-weight="800">Outputs</text>
+      <path d="M46,103 h45 l25 25 v70 h-70 z" fill="none" stroke="#58a832" stroke-width="5"/><path d="M91,103 v25 h25" fill="none" stroke="#58a832" stroke-width="5"/><polyline points="62,176 78,158 95,168 111,142" fill="none" stroke="#58a832" stroke-width="4"/>
+      <rect x="15" y="215" width="122" height="47" rx="8" fill="#fff" stroke="#58a832" stroke-opacity=".45"/><text x="76" y="237" text-anchor="middle">Calibrated GRB</text><text x="76" y="253" text-anchor="middle">light curve</text>
+      <rect x="15" y="272" width="122" height="47" rx="8" fill="#fff" stroke="#58a832" stroke-opacity=".45"/><text x="76" y="301" text-anchor="middle">Fitted alpha</text>
+      <rect x="15" y="329" width="122" height="47" rx="8" fill="#fff" stroke="#58a832" stroke-opacity=".45"/><text x="76" y="351" text-anchor="middle">Validation</text><text x="76" y="367" text-anchor="middle">summary</text>
+      <rect x="15" y="386" width="122" height="47" rx="8" fill="#fff" stroke="#58a832" stroke-opacity=".45"/><text x="76" y="408" text-anchor="middle">Publication-style</text><text x="76" y="424" text-anchor="middle">plots</text>
+      <rect x="0" y="471" width="152" height="34" fill="#58a832"/><text x="76" y="493" text-anchor="middle" font-size="15" font-weight="800" fill="#fff">plotting.py</text>
+    </g>
+  </g>
+
+  <g stroke="#0b376d" stroke-width="5" marker-end="url(#arrow)">
+    <line x1="172" y1="405" x2="181" y2="405"/><line x1="338" y1="405" x2="347" y2="405"/><line x1="504" y1="405" x2="513" y2="405"/><line x1="670" y1="405" x2="679" y2="405"/><line x1="836" y1="405" x2="845" y2="405"/><line x1="1002" y1="405" x2="1011" y2="405"/><line x1="1168" y1="405" x2="1177" y2="405"/><line x1="1334" y1="405" x2="1343" y2="405"/>
+  </g>
+
+  <!-- Validation and future work -->
+  <rect x="190" y="710" width="750" height="210" rx="14" fill="#fff" stroke="#0b376d" stroke-width="2" stroke-dasharray="8 7"/>
+  <text x="565" y="753" text-anchor="middle" font-family="Inter, Arial" font-size="26" font-weight="800" fill="#0b1b35">Validation &amp; Demo</text>
+  <g font-family="Inter, Arial" fill="#0b1b35" text-anchor="middle">
+    <text x="300" y="805" font-size="42" fill="#1f6eb8">◎</text><text x="300" y="838" font-size="15">Synthetic GRB</text><text x="300" y="856" font-size="15">field generator</text>
+    <line x1="385" y1="775" x2="385" y2="880" stroke="#d0d7e2"/>
+    <text x="470" y="805" font-size="42" fill="#7e57c2">⌖</text><text x="470" y="838" font-size="15">Known ground truth</text><text x="470" y="856" font-size="15">alpha</text>
+    <line x1="555" y1="775" x2="555" y2="880" stroke="#d0d7e2"/>
+    <text x="640" y="805" font-size="42" fill="#16a6a8">▶</text><text x="640" y="838" font-size="15">End-to-end</text><text x="640" y="856" font-size="15">demo run</text>
+    <line x1="725" y1="775" x2="725" y2="880" stroke="#d0d7e2"/>
+    <text x="810" y="805" font-size="42" fill="#58a832">{ }</text><text x="810" y="838" font-size="15">Demo summary</text><text x="810" y="856" font-size="15">JSON</text>
+  </g>
+  <rect x="190" y="886" width="750" height="34" fill="#071d49"/><text x="565" y="908" text-anchor="middle" font-family="Inter, Arial" font-size="16" font-weight="800" fill="#fff">synthetic.py</text>
+  <path d="M90 660 V820 H190" stroke="#0b376d" stroke-width="2" stroke-dasharray="8 7" fill="none" marker-end="url(#arrow)"/>
+  <path d="M1368 660 V805 H1332" stroke="#0b376d" stroke-width="2" stroke-dasharray="8 7" fill="none" marker-end="url(#arrow)"/>
+
+  <rect x="1000" y="715" width="335" height="205" rx="12" fill="#fff" stroke="#aab5c4" stroke-width="1.6"/>
+  <text x="1170" y="753" text-anchor="middle" font-family="Inter, Arial" font-size="24" font-weight="800" fill="#0b1b35">Future Extensions</text>
+  <g font-family="Inter, Arial" font-size="15" fill="#0b1b35">
+    <text x="1038" y="793" font-size="22" fill="#2d7dd2">•</text><text x="1075" y="793">WCS / sky-coordinate matching</text>
+    <text x="1038" y="829" font-size="22" fill="#2d7dd2">•</text><text x="1075" y="829">PSF photometry</text>
+    <text x="1038" y="865" font-size="22" fill="#2d7dd2">•</text><text x="1075" y="865">Host-galaxy subtraction</text>
+    <text x="1038" y="901" font-size="22" fill="#2d7dd2">•</text><text x="1075" y="901">Multi-band light curves</text>
+  </g>
+
+  <rect x="45" y="960" width="1358" height="48" rx="8" fill="#fff" stroke="#d9e0ea"/>
+  <g font-family="Inter, Arial" font-size="13" fill="#0b1b35">
+    <circle cx="75" cy="984" r="9" fill="#2f80ed"/><text x="93" y="989">Data &amp; Inputs</text>
+    <circle cx="229" cy="984" r="9" fill="#7e57c2"/><text x="247" y="989">Calibration</text>
+    <circle cx="367" cy="984" r="9" fill="#3f8edc"/><text x="385" y="989">Detection</text>
+    <circle cx="489" cy="984" r="9" fill="#35a6b8"/><text x="507" y="989">Photometry</text>
+    <circle cx="619" cy="984" r="9" fill="#2d7dd2"/><text x="637" y="989">Photometric Calibration</text>
+    <circle cx="853" cy="984" r="9" fill="#16a6a8"/><text x="871" y="989">Measurement</text>
+    <circle cx="991" cy="984" r="9" fill="#2d7dd2"/><text x="1009" y="989">Construction</text>
+    <circle cx="1137" cy="984" r="9" fill="#f57c00"/><text x="1155" y="989">Fitting</text>
+    <circle cx="1257" cy="984" r="9" fill="#58a832"/><text x="1275" y="989">Outputs</text>
+  </g>
+  <text x="724" y="1040" text-anchor="middle" font-family="Inter, Arial" font-size="15" font-style="italic" fill="#607187">Modules are Python scripts. Each stage produces data products consumed by the next.</text>
+</svg>

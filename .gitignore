@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Generated data and demo outputs
+# Keep the directories, ignore bulky contents.
+data/synthetic/run/
+examples/*.fits
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp

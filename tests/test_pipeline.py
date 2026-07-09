@@ -26,7 +26,6 @@ from grb_afterglow import (  # noqa: E402
     mag_to_flux,
     single_power_law,
 )
-import grb_afterglow.detection as detection_module  # noqa: E402
 
 
 def test_master_bias_is_median():
@@ -76,13 +75,19 @@ def test_detect_finds_known_star():
 
 
 def test_detect_normalises_centroid_column_names(monkeypatch):
+    import grb_afterglow.detection as detection_module
+
     class _DummyFinder:
-        def __call__(self, _residual):
+        def __call__(self, residual):
+            assert residual.shape == (16, 16)
             return detection_module.Table(
                 {"xcentroid": [10.0], "ycentroid": [11.0], "flux": [100.0]}
             )
 
-    monkeypatch.setattr(detection_module, "DAOStarFinder", lambda **_kwargs: _DummyFinder())
+    def _finder_factory(**_kwargs):
+        return _DummyFinder()
+
+    monkeypatch.setattr(detection_module, "DAOStarFinder", _finder_factory)
     img = np.zeros((16, 16), dtype=float)
     sources = detect_sources(img, background=np.zeros_like(img))
     assert "x_centroid" in sources.colnames

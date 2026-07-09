@@ -26,6 +26,7 @@ from grb_afterglow import (  # noqa: E402
     mag_to_flux,
     single_power_law,
 )
+import grb_afterglow.detection as detection_module  # noqa: E402
 
 
 def test_master_bias_is_median():
@@ -72,6 +73,20 @@ def test_detect_finds_known_star():
     assert len(sources) >= 1
     d = np.hypot(sources["x_centroid"] - 32, sources["y_centroid"] - 32)
     assert d.min() < 1.5
+
+
+def test_detect_normalises_centroid_column_names(monkeypatch):
+    class _DummyFinder:
+        def __call__(self, _residual):
+            return detection_module.Table(
+                {"xcentroid": [10.0], "ycentroid": [11.0], "flux": [100.0]}
+            )
+
+    monkeypatch.setattr(detection_module, "DAOStarFinder", lambda **_kwargs: _DummyFinder())
+    img = np.zeros((16, 16), dtype=float)
+    sources = detect_sources(img, background=np.zeros_like(img))
+    assert "x_centroid" in sources.colnames
+    assert "y_centroid" in sources.colnames
 
 
 def test_aperture_photometry_positive_and_snr():

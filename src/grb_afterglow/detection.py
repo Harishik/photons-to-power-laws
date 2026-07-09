@@ -43,6 +43,10 @@ def detect_sources(
     sources = finder(residual)
     if sources is None:
         return Table(names=("x_centroid", "y_centroid", "flux"), dtype=(float, float, float))
+    if "x_centroid" not in sources.colnames and "xcentroid" in sources.colnames:
+        sources.rename_column("xcentroid", "x_centroid")
+    if "y_centroid" not in sources.colnames and "ycentroid" in sources.colnames:
+        sources.rename_column("ycentroid", "y_centroid")
     sources.sort("flux")
     sources.reverse()
     return sources

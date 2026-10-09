@@ -1,0 +1,86 @@
+{
+  "status": "PASS",
+  "seed": 42,
+  "n_frames": 36,
+  "bands": [
+    "g",
+    "r",
+    "i"
+  ],
+  "recovery": [
+    {
+      "parameter": "alpha1",
+      "injected": 0.9000000000000001,
+      "recovered": 0.9006579351925147,
+      "error": 0.0011553678545483679,
+      "n_sigma": 0.5694594928571424,
+      "pass": true
+    },
+    {
+      "parameter": "alpha2",
+      "injected": 2.2,
+      "recovered": 2.206341545111026,
+      "error": 0.04274667478223641,
+      "n_sigma": 0.1483517757423622,
+      "pass": true
+    },
+    {
+      "parameter": "beta",
+      "injected": 0.6000000000000001,
+      "recovered": 0.5998446619769368,
+      "error": 0.006505243266386291,
+      "n_sigma": 0.023878895331400155,
+      "pass": true
+    },
+    {
+      "parameter": "t_break_days",
+      "injected": 0.5,
+      "recovered": 0.5009657338604063,
+      "error": 0.011184002744756373,
+      "n_sigma": 0.0863495729075273,
+      "pass": true
+    },
+    {
+      "parameter": "p",
+      "injected": 2.2,
+      "recovered": 2.1996893239538737,
+      "error": 0.013010486532772581,
+      "n_sigma": 0.02387889533138309,
+      "pass": true
+    }
+  ],
+  "flux_pulls": {
+    "mean": 0.1326290062681556,
+    "std": 0.7911425673619603
+  },
+  "model_comparison": {
+    "single_power_law": {
+      "chi2": 15236.791338867133,
+      "dof": 33,
+      "aic": 15242.791338867133,
+      "bic": 15247.541895682501
+    },
+    "broken_power_law": {
+      "chi2": 20.3708303472264,
+      "dof": 31,
+      "aic": 30.3708303472264,
+      "bic": 38.28842503950695
+    }
+  },
+  "preferred_model": "broken_power_law",
+  "closure": {
+    "pre_break": {
+      "relation": "ISM, \u03bd_m < \u03bd < \u03bd_c",
+      "p": 2.1996893239538737,
+      "p_err": 0.013010486532772581,
+      "n_sigma": 0.09067166689785705
+    },
+    "post_break": {
+      "relation": "Post-jet-break, \u03bd_m < \u03bd < \u03bd_c",
+      "p": 2.1996893239538737,
+      "p_err": 0.013010486532772581,
+      "n_sigma": 0.1488766126504251
+    }
+  },
+  "injected_regime": "ISM, slow cooling, nu_m < nu < nu_c, jet break"
+}

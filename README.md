@@ -2,237 +2,255 @@
 
 # Photons to Power Laws
 
-### Decoding the Decay: An Optical Photometry Pipeline for Gamma-Ray Burst Afterglows
-
-From raw telescope frames to calibrated photometry, light-curve construction, and power-law decay fitting.
+### From raw telescope frames to the physics of gamma-ray burst afterglows
 
 [![CI](https://github.com/Harishik/photons-to-power-laws/actions/workflows/ci.yml/badge.svg)](https://github.com/Harishik/photons-to-power-laws/actions/workflows/ci.yml)
-![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
-![License](https://img.shields.io/github/license/Harishik/photons-to-power-laws)
-![Status](https://img.shields.io/badge/status-research%20prototype-orange)
+![Python](https://img.shields.io/badge/python-3.10%E2%80%933.13-blue)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+
+<img src="docs/figures/hero.gif" alt="A simulated afterglow fading in the image while its g, r, i light curve builds up and a jet-break model is fitted" width="840">
 
 </div>
 
-<p align="center">
-  <img src="examples/lightcurve.svg" alt="Recovered GRB afterglow light curve" width="760">
-</p>
+**Photons to Power Laws** is a Python pipeline that takes optical images of a
+gamma-ray burst (GRB) afterglow and turns them into physics. It calibrates raw
+frames, measures the seeing, calibrates photometry against a reference star
+catalog through the WCS, forces photometry at the burst position, fits single
+and broken power laws jointly across bands, and tests the fitted slopes against
+the closure relations of the fireball model to infer the electron energy index,
+the circumburst medium, and the jet break.
 
-<div align="center">
+It is validated two ways: on a simulated campaign where the true physics is
+known, and on **public ZTF images of GRB 221009A**, the brightest gamma-ray
+burst ever recorded, where it is checked against published photometry.
 
-**Demo result:** injected decay index `α = 1.10`, recovered `α = 1.11 ± 0.004`, reduced `χ² ≈ 1.0`.
+## Results
 
-</div>
+### Simulated campaign: injected physics recovered from raw pixels
 
----
+The demo simulates 36 dithered g/r/i frames with variable seeing and
+transparency, saturating stars, a structured bias, and a vignetted flat. The
+injected afterglow has `p = 2.2` in a constant-density medium with a jet break
+at half a day. Everything below is recovered from the raw FITS files.
 
-## Overview
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/figures/lightcurve_dark.png">
+  <img src="docs/figures/lightcurve_light.png" alt="Three-band light curve with a jet-break fit and normalised residuals" width="100%">
+</picture>
 
-**Photons to Power Laws** is a compact, research-oriented Python pipeline that demonstrates how optical Gamma-Ray Burst afterglow observations can be reduced from detector images into physical light-curve measurements.
+| Parameter | Injected | Recovered |
+|---|---:|---:|
+| Early decay, alpha1 | 0.900 | 0.901 ± 0.001 |
+| Late decay, alpha2 | 2.200 | 2.206 ± 0.043 |
+| Spectral index, beta | 0.600 | 0.600 ± 0.007 |
+| Jet-break time | 0.500 d | 0.501 ± 0.011 d |
+| Electron index, p | 2.2 | 2.200 ± 0.013 |
+| Preferred model | broken power law | broken power law (ΔBIC = 15,209) |
 
-The project covers the full workflow:
-
-1. calibrate raw optical frames with master bias and master flat frames,
-2. detect field sources and estimate local background,
-3. perform aperture photometry with propagated uncertainties,
-4. solve a robust photometric zero point from reference stars,
-5. build a calibrated afterglow light curve, and
-6. fit the temporal power-law decay `F(t) ∝ t^(-α)`.
-
-The repository ships with a synthetic GRB field generator, so the whole pipeline can be tested end-to-end without downloading external telescope data.
-
-## Why this matters
-
-Gamma-Ray Bursts are among the most energetic explosions in the universe. Their optical afterglows fade rapidly, often following a power law in time. Measuring the temporal decay index `α` helps connect observed light curves to the physics of relativistic jets, synchrotron emission, shock microphysics, and possible jet breaks.
-
-This project is designed to make that transformation explicit. It is not just a plotting script. It is a transparent, modular reduction pipeline that shows how raw pixels become a fitted physical parameter.
-
-## Key features
-
-- **End-to-end workflow:** raw frames to calibrated light curve and fitted decay index.
-- **Synthetic validation:** built-in data generator with known ground truth.
-- **Uncertainty-aware photometry:** source, sky, and read-noise terms are included in the error budget.
-- **Robust zero-point calibration:** field-star matching with sigma-clipped zero-point estimation.
-- **Afterglow-focused fitting:** single and smoothly broken power-law models.
-- **Readable research code:** small modules, clear responsibilities, and tests for each stage.
-- **CI-ready:** GitHub Actions workflow runs tests and an end-to-end demo smoke test.
-
-## Pipeline architecture
+The closure-relation test picks the injected regime on its own: an ISM in the
+`nu_m < nu < nu_c` regime before the break and a post-jet-break decay after it.
 
 <p align="center">
-  <img src="docs/assets/4E2BC60F-9D5B-40CC-826A-D63C54B5FB6B.png" alt="Updated Photons to Power Laws pipeline architecture" width="100%">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/figures/closure_dark.png">
+  <img src="docs/figures/closure_light.png" alt="Measured alpha and beta before and after the break against the closure relations" width="62%">
+</picture>
 </p>
 
-The architecture follows a modular left-to-right reduction flow. Each Python module produces a data product consumed by the next stage, while the synthetic generator supports end-to-end validation with known ground-truth `α`.
+### Real data: GRB 221009A in public ZTF images
 
-## Repository structure
+The same `reduce_frame` code runs on 120″ ZTF cutouts of GRB 221009A,
+calibrated against Pan-STARRS1, with the flux in the deep pre-burst ZTF
+reference image subtracted. The afterglow is detected at 1.6, 3.6 and 5.6 days
+in r band; later epochs give forced-photometry limits. One epoch is rejected
+after inspection because a satellite trail crosses the aperture.
 
-```text
-photons-to-power-laws/
-├── src/grb_afterglow/        # Core Python package
-│   ├── calibration.py        # Bias, flat, FITS I/O helpers
-│   ├── detection.py          # Background estimation and source detection
-│   ├── photometry.py         # Aperture photometry and noise propagation
-│   ├── zeropoint.py          # Catalog matching and zero-point calibration
-│   ├── lightcurve.py         # Light-curve container and magnitude/flux conversion
-│   ├── fitting.py            # Single and broken power-law fitting
-│   ├── plotting.py           # Publication-style diagnostic plots
-│   └── synthetic.py          # Synthetic GRB field generator
-├── scripts/run_demo.py       # Full end-to-end demonstration
-├── tests/                    # Unit and pipeline tests
-├── examples/                 # Demo outputs and viewable figures
-├── docs/                     # Science background and notes
-└── .github/workflows/ci.yml  # Continuous integration workflow
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="case_studies/grb221009a/figures/lightcurve_dark.png">
+  <img src="case_studies/grb221009a/figures/lightcurve_light.png" alt="GRB 221009A ZTF r-band light curve with Liverpool Telescope photometry" width="100%">
+</picture>
 
-## Installation
+| Measurement | Value |
+|---|---|
+| Decay index from ZTF alone (t ≥ 1 d) | 1.53 ± 0.15 |
+| Decay index from ZTF + Liverpool Telescope | 1.40 ± 0.02 |
+| Published r′ decay after 0.4 d (Laskar et al. 2023) | 1.42 ± 0.01 |
+| ZTF − Liverpool at the detected epochs | +0.10 to +0.24 mag (ZTF fainter) |
 
-Clone the repository and install the required scientific Python stack:
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="case_studies/grb221009a/figures/filmstrip_dark.png">
+  <img src="case_studies/grb221009a/figures/filmstrip_light.png" alt="ZTF r-band cutouts around GRB 221009A, with one epoch flagged for a satellite trail" width="100%">
+</picture>
+
+The full write-up, including what limits the measurement, is in
+[`case_studies/grb221009a`](case_studies/grb221009a/README.md).
+
+## How it works
+
+<p align="center">
+  <img src="docs/assets/pipeline_architecture.png" alt="Pipeline architecture: calibration, detection, photometry, zero point, forced photometry, light curve, fitting, outputs" width="100%">
+</p>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/figures/pipeline_stages_dark.png">
+  <img src="docs/figures/pipeline_stages_light.png" alt="One frame at four stages: raw, calibrated, detected and matched, forced photometry" width="100%">
+</picture>
+
+| Stage | Module | What it does |
+|---|---|---|
+| Calibration | `calibration` | Sigma-clipped master bias and flats; `(raw − bias) / flat` |
+| Detection | `detection` | Background and RMS maps, DAOFIND detection, seeing from Gaussian fits to isolated stars, source masks |
+| Photometry | `photometry` | Vectorised aperture photometry; sky from masked, sigma-clipped annuli; CCD-equation errors |
+| Calibration to AB | `zeropoint` | One-to-one WCS cross-match; robust weighted zero point with optional colour term |
+| Reduction | `pipeline` | Seeing-matched apertures, per-frame zero point, astrometric correction, forced photometry at the burst |
+| Light curve | `lightcurve` | Multi-band light curve in flux density, so faint and negative forced fluxes are kept |
+| Fitting | `fitting` | Single and smoothly broken power laws, joint across bands with spectral index beta; AIC/BIC comparison |
+| Physics | `closure` | Ranks the closure relations against the measured (alpha, beta) and infers `p` |
+| Data | `synthetic`, `archives` | Simulated campaigns with known truth; ZTF (IRSA) and Pan-STARRS1 (MAST) access |
+
+Photometric calibration is solved separately for every frame, and the
+recovered zero points track the simulated atmosphere:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/figures/zeropoints_dark.png">
+  <img src="docs/figures/zeropoints_light.png" alt="Zero-point solution for one frame and zero point against time compared with the true transparency" width="100%">
+</picture>
+
+## Quickstart
 
 ```bash
 git clone https://github.com/Harishik/photons-to-power-laws.git
 cd photons-to-power-laws
-
-python -m venv .venv
-source .venv/bin/activate
-
-pip install -r requirements.txt
-pip install -e ".[dev]"
+python -m venv .venv && source .venv/bin/activate
+pip install -e .
 ```
 
-On Windows PowerShell, activate the environment with:
-
-```powershell
-.venv\Scripts\Activate.ps1
-```
-
-## Run the demo
+Run the validation demo (simulate, reduce, fit, validate, draw figures):
 
 ```bash
-python scripts/run_demo.py
+p2pl demo --out my_demo
 ```
 
-The demo will:
+Fit your own light curve (CSV with `time_s` and `flux_ujy`/`flux_err_ujy`, or `mag`/`mag_err`, and an optional `band` column):
 
-- generate synthetic bias, flat, and science FITS frames,
-- inject a fading GRB afterglow with known `α`,
-- calibrate the frames,
-- detect field stars,
-- solve a photometric zero point,
-- force photometry at the afterglow position,
-- fit the afterglow decay, and
-- write outputs to `examples/`.
-
-Expected outputs:
-
-```text
-examples/lightcurve.csv
-examples/demo_summary.json
-examples/lightcurve.png
-examples/zeropoint_solution.png
+```bash
+p2pl fit my_lightcurve.csv --plot fit.png
 ```
 
-The README preview uses `examples/lightcurve.svg` so the figure renders directly on GitHub.
+Reproduce the GRB 221009A case study from the committed ZTF data:
 
-## Current validation result
+```bash
+python case_studies/grb221009a/analyze.py
+```
 
-| Metric | Value |
-|---|---:|
-| Injected temporal decay index | `1.10` |
-| Recovered temporal decay index | `1.1065` |
-| Fitted uncertainty | `0.0039` |
-| Absolute deviation | `0.0065` |
-| Reduced χ² | `1.031` |
-| Number of epochs | `10` |
-| Validation status | `PASS` |
-
-This validation is synthetic, but it is useful because the ground truth is known. It checks that the pipeline can recover the correct power-law decay when the detector model, photometric calibration, and measurement noise are controlled.
-
-## Minimal API example
+## Python API
 
 ```python
+from glob import glob
+
+from astropy.coordinates import SkyCoord
+from astropy.table import Table
+
 from grb_afterglow import (
-    LightCurve,
-    calibrate_frame,
-    detect_sources,
-    aperture_photometry_at,
-    compute_zeropoint,
-    calibrate_magnitudes,
-    fit_single_power_law,
+    build_master_bias,
+    build_master_flat,
+    compare_models,
+    evaluate_closure_relations,
+    fit_lightcurve,
+    run_pipeline,
 )
 from grb_afterglow.calibration import load_fits
 
-raw, header = load_fits("science_0001.fits")
-calibrated = calibrate_frame(
-    raw,
-    master_bias=master_bias,
-    master_flat=master_flat,
-)
 
-sources = detect_sources(calibrated, fwhm=3.5, threshold_sigma=5.0)
+def frames(pattern):
+    return [load_fits(path)[0] for path in sorted(glob(pattern))]
 
-# After solving the zero point and measuring the afterglow across epochs:
-light_curve = LightCurve(time_s, calibrated_mag, calibrated_mag_err)
-fit = fit_single_power_law(light_curve.time, light_curve.flux, light_curve.flux_err)
 
-print(fit.summary())
+bias = build_master_bias(frames("raw/bias_*.fits"))
+flats = {band: build_master_flat(frames(f"raw/flat_{band}_*.fits"), master_bias=bias) for band in "gri"}
+catalog = Table.read("catalog.csv")  # ra, dec, and per-band AB magnitudes (g, g_err, r, r_err, ...)
+target = SkyCoord(150.10330, 22.39806, unit="deg")
+
+result = run_pipeline(sorted(glob("raw/sci_*.fits")), target, catalog, master_bias=bias, master_flats=flats)
+lc = result.lightcurve
+
+single = fit_lightcurve(lc, "single", reference_band="r")
+broken = fit_lightcurve(lc, "broken", reference_band="r")
+print(compare_models(single, broken).summary())
+
+p, e = broken.params, broken.errors
+best = evaluate_closure_relations(p["alpha2"], e["alpha2"], p["beta"], e["beta"])[0]
+print(f"{best.relation.label}: p = {best.p:.2f} ± {best.p_err:.2f}")
 ```
 
-## Scientific scope
+`p2pl simulate my_data` writes a simulated campaign in exactly this layout (run the snippet inside `my_data/`).
 
-The current version focuses on a clean single-band optical workflow. It is suitable for education, prototyping, and method development. For publication-grade reductions on real telescope data, the next required steps are WCS-aware catalog matching, PSF photometry, image stacking, host-galaxy subtraction, and real survey catalog adapters.
+## Repository layout
 
-## Roadmap
+```text
+src/grb_afterglow/      the package (pipeline stages, fitting, closure relations, plots, CLI)
+tests/                  70 tests: unit, statistical error-bar checks, end-to-end recovery
+case_studies/grb221009a fetch_data.py, analyze.py, committed public data, results, figures
+examples/synthetic/     demo outputs: light curve, per-frame table, validation summary
+docs/                   science background, figures, architecture diagram
+scripts/run_demo.py     regenerates the demo outputs and README figures
+```
 
-- [x] Core reduction, photometry, calibration, light curve, and fitting pipeline
-- [x] Synthetic GRB field generator with known ground truth
-- [x] Single and broken power-law fitting
-- [x] GitHub Actions CI workflow
-- [ ] `astroquery` adapters for Pan-STARRS, SDSS, and Gaia
-- [ ] WCS-based sky-coordinate matching in the demo path
-- [ ] PSF photometry option with `photutils.psf`
-- [ ] Image differencing for host-galaxy subtraction
-- [ ] Multi-band light curves and colour evolution
-- [ ] Closure-relation diagnostics using temporal and spectral slopes
-- [ ] Notebook walkthrough using a real public GRB afterglow dataset
-
-## Testing
-
-Run the test suite with:
+## Testing and quality
 
 ```bash
-pytest -q
+pip install -e ".[dev]"
+pytest --cov          # 70 tests
+ruff check . && ruff format --check .
 ```
 
-The CI workflow also runs the end-to-end demo as a smoke test.
+Beyond unit tests, the suite checks that the error bars are honest: forced
+photometry on blank sky averages to zero with unit-width pulls, repeated noise
+realisations match the quoted uncertainties, and an end-to-end run recovers the
+injected afterglow physics. CI runs on Python 3.10 to 3.13 and also runs the
+demo and the case study.
+
+## Scope and roadmap
+
+The pipeline does aperture photometry with reference-flux subtraction. For
+faint afterglows on bright hosts or in crowded fields, the next steps are:
+
+- [ ] PSF photometry (`photutils.psf`)
+- [ ] Image subtraction against the reference image
+- [ ] Colour terms between instrument and catalog bandpasses in `reduce_frame`
+- [ ] Galactic and host extinction corrections, so beta can be measured on real data
+- [ ] Bayesian (MCMC) fitting for posterior distributions of the break time and `p`
+- [ ] More case studies from public archives
 
 ## Documentation
 
-- [Science background](docs/science_background.md)
-- [Changelog](CHANGELOG.md)
-- [Contributing guide](CONTRIBUTING.md)
-- [Citation metadata](CITATION.cff)
+- [Science background](docs/science_background.md): afterglows, closure relations, jet breaks, extinction
+- [GRB 221009A case study](case_studies/grb221009a/README.md)
+- [Changelog](CHANGELOG.md) · [Contributing](CONTRIBUTING.md) · [Citation](CITATION.cff)
 
 ## Citation
 
-If this project helps your work, cite the repository using the metadata in `CITATION.cff`.
+If this project helps your work, please cite it using [`CITATION.cff`](CITATION.cff):
 
 ```bibtex
-@software{photons_to_power_laws_2026,
-  title  = {Photons to Power Laws: An Optical Photometry Pipeline for Gamma-Ray Burst Afterglows},
-  year   = {2026},
-  url    = {https://github.com/Harishik/photons-to-power-laws},
-  license = {MIT}
+@software{jamwal_photons_to_power_laws,
+  author  = {Jamwal, Harishik Dev Singh},
+  title   = {Photons to Power Laws: an optical photometry pipeline for gamma-ray burst afterglows},
+  year    = {2026},
+  version = {0.2.0},
+  url     = {https://github.com/Harishik/photons-to-power-laws},
 }
 ```
 
-## Contributing
+## Acknowledgements
 
-Contributions are welcome. Good first areas include catalog adapters, WCS matching, PSF photometry, and a real-data tutorial notebook. See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
+Built on [Astropy](https://www.astropy.org/) and
+[photutils](https://photutils.readthedocs.io/). The case study uses public data
+from the Zwicky Transient Facility via the NASA/IPAC Infrared Science Archive
+and from Pan-STARRS1 via MAST, and Liverpool Telescope photometry published by
+Laskar et al. (2023); see
+[`case_studies/grb221009a/data`](case_studies/grb221009a/data/README.md) for
+full acknowledgements.
 
-## License
-
-This project is released under the MIT License. See [LICENSE](LICENSE).
-
-## Acknowledgments
-
-Built on the Astropy ecosystem, especially `astropy` and `photutils`. The reduction design follows standard optical afterglow practice: calibration, source detection, field-star zero-point calibration, forced photometry at the burst position, and temporal power-law fitting.
+Released under the [MIT License](LICENSE).

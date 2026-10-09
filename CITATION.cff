@@ -1,15 +1,26 @@
 cff-version: 1.2.0
-title: "Decoding the Decay: An Optical Photometry Pipeline for Gamma-Ray Burst Afterglows"
+title: "Photons to Power Laws: an optical photometry pipeline for gamma-ray burst afterglows"
 message: "If you use this software, please cite it as below."
 type: software
 authors:
-  - name: "Photons to Power Laws contributors"
-version: 0.1.0
-date-released: 2026-06-20
+  - given-names: "Harishik Dev Singh"
+    family-names: "Jamwal"
+version: 0.2.0
+date-released: 2026-10-10
 license: MIT
 repository-code: "https://github.com/Harishik/photons-to-power-laws"
+abstract: >-
+  A Python pipeline that takes raw optical frames of a gamma-ray burst
+  afterglow through calibration, source detection, aperture photometry,
+  catalog-based photometric calibration, and multi-band light-curve fitting,
+  and tests the fitted temporal and spectral indices against the closure
+  relations of the standard fireball model. It is validated on simulated data
+  with known ground truth and applied to public ZTF images of GRB 221009A.
 keywords:
   - astronomy
   - gamma-ray bursts
+  - afterglows
   - photometry
   - light curves
+  - closure relations
+  - Zwicky Transient Facility

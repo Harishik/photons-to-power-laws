@@ -10,42 +10,44 @@ as working code.
 git clone https://github.com/Harishik/photons-to-power-laws.git
 cd photons-to-power-laws
 python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-pip install -e ".[dev]"     # editable install + pytest
-pytest -q                   # everything should pass before you start
+pip install -e ".[dev]"
+pre-commit install          # optional: lint and format on every commit
+pytest                      # everything should pass before you start
 ```
 
 ## Ground rules
 
 - **Keep modules focused.** Each pipeline stage lives in its own module and
-  should be usable on its own.
-- **Explain the science.** Docstrings should say not just *what* a function does
-  but *why* — what physical quantity it produces and how. New contributors learn
-  the subject by reading this code.
-- **Always carry uncertainties.** A measurement without an error bar can't be
-  fit meaningfully. Propagate errors through any new stage.
-- **Add a test.** New behaviour needs a test in `tests/`. Where possible, test
-  against a known answer. The synthetic generator makes this easy.
-- **No heavyweight external binaries** in the core path. Prefer pip-installable
-  Python so the project stays runnable everywhere. Optional adapters, such as
-  `astrometry.net` or `astroquery`, can live behind extras.
+  is usable on its own.
+- **Explain the science.** Docstrings say not just *what* a function does but
+  *why*: which physical quantity it produces and how.
+- **Always carry uncertainties.** A measurement without an error bar cannot be
+  fitted meaningfully. Propagate errors through any new stage, and test that
+  they are honest (see `tests/test_photometry.py` for the pattern).
+- **Test against a known answer.** The synthetic generator injects known
+  physics; new stages should be validated by recovering it.
+- **No heavyweight external binaries** in the core path. Optional adapters can
+  live behind extras.
 
 ## Workflow
 
 1. Open an issue describing the change, especially for new pipeline stages.
 2. Branch from `main`: `git checkout -b feature/short-description`.
-3. Make the change, add tests, run `pytest -q`.
-4. Update `CHANGELOG.md` under an `## [Unreleased]` heading.
-5. Open a pull request with a clear description and, for visual changes, a
+3. Make the change and add tests. Run `ruff check .`, `ruff format .`, and
+   `pytest`.
+4. If you changed anything that affects results, run `python scripts/run_demo.py`
+   and `python case_studies/grb221009a/analyze.py` and commit the updated
+   outputs.
+5. Add an entry under `## [Unreleased]` in `CHANGELOG.md`.
+6. Open a pull request with a clear description and, for visual changes, a
    before/after figure.
 
 ## Style
 
-- Follow PEP 8 and keep lines reasonable.
-- Type hints on public functions.
-- Prefer NumPy-style docstrings, as used throughout `src/grb_afterglow/`.
+- Ruff handles linting and formatting (configured in `pyproject.toml`).
+- Type hints on public functions; NumPy-style docstrings.
 
 ## Good first issues
 
-Look at the unchecked items in the README roadmap. The catalog adapters and the
-real-data WCS matching path are well-scoped entry points.
+See the roadmap in the README. A colour-term option in `reduce_frame`, PSF
+photometry, and image subtraction are well-scoped next steps.

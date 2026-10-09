@@ -2,28 +2,64 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install "ruff>=0.5"
+      - run: ruff check .
+      - run: ruff format --check .
+
   test:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Install dependencies
+          cache: pip
+      - name: Install
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
           pip install -e ".[dev]"
-      - name: Run tests
-        run: pytest -q
-      - name: Run end-to-end demo (smoke test)
-        run: python scripts/run_demo.py
+          python -c "import photutils, astropy, numpy; print('photutils', photutils.__version__, 'astropy', astropy.__version__, 'numpy', numpy.__version__)"
+      - name: Unit and end-to-end tests
+        run: pytest --cov --cov-report=term
+
+  science:
+    name: demo and case study
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e .
+      - name: Synthetic demo recovers the injected physics
+        run: p2pl demo --out "$RUNNER_TEMP/demo" --theme light
+      - name: GRB 221009A case study runs on the committed ZTF data
+        run: python case_studies/grb221009a/analyze.py --results "$RUNNER_TEMP/cs" --figures "$RUNNER_TEMP/cs_fig"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: science-outputs
+          path: |
+            ${{ runner.temp }}/demo/summary.json
+            ${{ runner.temp }}/demo/figures
+            ${{ runner.temp }}/cs

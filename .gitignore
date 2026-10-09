@@ -8,15 +8,16 @@ dist/
 .venv/
 venv/
 
-# Test / coverage
+# Test / lint caches
 .pytest_cache/
+.ruff_cache/
 .coverage
+coverage.xml
 htmlcov/
 
-# Generated data and demo outputs
-# Keep the directories, ignore bulky contents.
-data/synthetic/run/
-examples/*.fits
+# Generated data (regenerate with `p2pl demo` or `p2pl simulate`)
+examples/synthetic/data/
+p2pl_demo/
 
 # OS / editor
 .DS_Store

@@ -1,147 +1,93 @@
-"""Tests for the grb_afterglow pipeline."""
+"""End-to-end: raw synthetic frames in, injected physics out."""
 
-from __future__ import annotations
-
-import os
-import sys
+import json
 
 import numpy as np
 import pytest
+from astropy import units as u
+from astropy.coordinates import SkyCoord
+from astropy.table import Table
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-
-from grb_afterglow import (  # noqa: E402
-    LightCurve,
-    aperture_photometry_at,
-    broken_power_law,
+from grb_afterglow import (
     build_master_bias,
     build_master_flat,
-    calibrate_frame,
-    calibrate_magnitudes,
-    compute_zeropoint,
-    detect_sources,
-    fit_broken_power_law,
-    fit_single_power_law,
-    flux_to_mag,
-    mag_to_flux,
-    single_power_law,
+    evaluate_closure_relations,
+    fit_lightcurve,
+    run_pipeline,
 )
+from grb_afterglow.calibration import load_fits
+from grb_afterglow.pipeline import header_time_since_trigger
 
 
-def test_master_bias_is_median():
-    frames = [np.full((8, 8), v, dtype=float) for v in (10, 12, 14)]
-    assert np.allclose(build_master_bias(frames), 12.0)
+@pytest.fixture(scope="module")
+def reduced(small_campaign):
+    out, truth = small_campaign
+    raw = out / "raw"
+    bias = build_master_bias([load_fits(p)[0] for p in sorted(raw.glob("bias_*.fits"))])
+    flats = {
+        b: build_master_flat([load_fits(p)[0] for p in sorted(raw.glob(f"flat_{b}_*.fits"))], master_bias=bias)
+        for b in ("g", "r")
+    }
+    catalog = Table.read(out / "catalog.csv", format="ascii.csv")
+    target = SkyCoord(truth["afterglow"]["ra"] * u.deg, truth["afterglow"]["dec"] * u.deg)
+    result = run_pipeline(sorted(raw.glob("sci_*.fits")), target, catalog, master_bias=bias, master_flats=flats)
+    return result, truth
 
 
-def test_master_flat_normalised_to_unity():
-    rng = np.random.default_rng(0)
-    flats = [rng.normal(1000.0, 5.0, (16, 16)) for _ in range(5)]
-    mf = build_master_flat(flats)
-    assert mf.shape == (16, 16)
-    assert np.isclose(np.median(mf), 1.0, atol=1e-2)
+def test_every_frame_is_calibrated(reduced):
+    result, truth = reduced
+    assert len(result.frames) == len(truth["frames"])
+    assert all(f.zeropoint.n_stars >= 5 for f in result.frames)
 
 
-def test_calibrate_removes_bias_and_flat():
-    scene = np.full((8, 8), 100.0)
-    flat = np.full((8, 8), 2.0)
-    bias = np.full((8, 8), 500.0)
-    raw = scene * flat + bias
-    cal = calibrate_frame(raw, master_bias=bias, master_flat=flat)
-    assert np.allclose(cal, scene)
+def test_fluxes_are_unbiased_with_honest_errors(reduced):
+    result, truth = reduced
+    by_name = {f["file"]: f for f in truth["frames"]}
+    pulls = np.array(
+        [(f.flux_ujy - by_name[f.path.split("/")[-1]]["afterglow_flux_ujy"]) / f.flux_err_ujy for f in result.frames]
+    )
+    assert abs(pulls.mean()) < 0.7
+    assert pulls.std() < 1.8
 
 
-def test_calibrate_shapes_must_match():
+def test_seeing_is_measured(reduced):
+    result, truth = reduced
+    by_name = {f["file"]: f for f in truth["frames"]}
+    scale = truth["config"]["pixel_scale"]
+    ratio = [f.fwhm / (by_name[f.path.split("/")[-1]]["seeing_arcsec"] / scale) for f in result.frames]
+    # A Gaussian fitted to a Moffat(beta=3) core reads ~10% wide; it must be stable.
+    assert 1.0 < np.median(ratio) < 1.25 and np.std(ratio) < 0.05
+
+
+def test_physics_is_recovered(reduced):
+    result, truth = reduced
+    ag = truth["afterglow"]
+    fit = fit_lightcurve(result.lightcurve, "broken", reference_band="r")
+    p, e = fit.params, fit.errors
+    assert p["alpha1"] == pytest.approx(ag["alpha1"], abs=max(4 * e["alpha1"], 0.03))
+    assert p["alpha2"] == pytest.approx(ag["alpha2"], abs=max(4 * e["alpha2"], 0.1))
+    assert p["beta"] == pytest.approx(ag["beta"], abs=max(4 * e["beta"], 0.05))
+    best = evaluate_closure_relations(p["alpha2"], e["alpha2"], p["beta"], e["beta"])[0]
+    assert best.relation.key == "jet_slow"
+
+
+def test_summary_table_has_one_row_per_frame(reduced):
+    result, _ = reduced
+    table = result.summary_table()
+    assert len(table) == len(result.frames)
+    assert {"zeropoint", "flux_ujy", "snr"} <= set(table.colnames)
+
+
+def test_truth_file_is_written(small_campaign):
+    out, truth = small_campaign
+    assert json.loads((out / "truth.json").read_text())["afterglow"]["p"] == truth["afterglow"]["p"]
+
+
+def test_header_time_since_trigger():
+    from astropy.io import fits
+
+    assert header_time_since_trigger(fits.Header({"TSINCE": 42.0})) == 42.0
+    hdr = fits.Header({"OBSMJD": 60000.5, "EXPTIME": 30.0})
+    assert header_time_since_trigger(hdr, 60000.0) == pytest.approx(43215.0)
     with pytest.raises(ValueError):
-        build_master_bias([np.zeros((4, 4)), np.zeros((5, 5))])
-
-
-def _make_star_image(positions, flux=5000.0, fwhm=3.0, sky=100.0, shape=(64, 64), seed=1):
-    rng = np.random.default_rng(seed)
-    img = np.full(shape, sky, dtype=float)
-    sigma = fwhm / (2 * np.sqrt(2 * np.log(2)))
-    yy, xx = np.mgrid[0:shape[0], 0:shape[1]]
-    for (x, y) in positions:
-        g = np.exp(-((xx - x) ** 2 + (yy - y) ** 2) / (2 * sigma ** 2))
-        img += flux * g / g.sum()
-    return rng.poisson(img).astype(float)
-
-
-def test_detect_finds_known_star():
-    img = _make_star_image([(32, 32)])
-    sources = detect_sources(img, fwhm=3.0, threshold_sigma=5.0)
-    assert len(sources) >= 1
-    d = np.hypot(sources["x_centroid"] - 32, sources["y_centroid"] - 32)
-    assert d.min() < 1.5
-
-
-def test_aperture_photometry_positive_and_snr():
-    img = _make_star_image([(32, 32)], flux=8000.0)
-    res = aperture_photometry_at(img, 32, 32, r_aper=5.0, gain=1.5, read_noise=5.0, exptime=1.0)
-    assert res.net_counts > 0
-    assert res.snr > 10
-    assert np.isfinite(res.instrumental_mag)
-
-
-def test_brighter_star_has_smaller_magnitude():
-    faint = aperture_photometry_at(_make_star_image([(32, 32)], flux=3000.0), 32, 32, r_aper=5.0)
-    bright = aperture_photometry_at(_make_star_image([(32, 32)], flux=30000.0), 32, 32, r_aper=5.0)
-    assert bright.instrumental_mag < faint.instrumental_mag
-
-
-def test_zeropoint_recovers_constant_offset():
-    rng = np.random.default_rng(3)
-    cat = rng.uniform(15, 20, 50)
-    inst = cat - 24.0 + rng.normal(0, 0.01, 50)
-    zp = compute_zeropoint(inst, cat)
-    assert abs(zp.value - 24.0) < 0.05
-    assert zp.n_stars > 40
-
-
-def test_calibrate_magnitudes_applies_zeropoint():
-    from grb_afterglow.zeropoint import ZeroPoint
-
-    zp = ZeroPoint(value=25.0, error=0.02, n_stars=30, scatter=0.05)
-    cal, err = calibrate_magnitudes(np.array([-7.0]), zp, np.array([0.01]))
-    assert np.isclose(cal[0], 18.0)
-    assert err[0] > 0.02
-
-
-def test_mag_flux_roundtrip():
-    mag = np.array([18.0, 19.5, 21.0])
-    flux = mag_to_flux(mag)
-    back = flux_to_mag(flux)
-    assert np.allclose(mag, back, atol=1e-9)
-
-
-def test_lightcurve_sorts_and_filters():
-    lc = LightCurve(
-        time=np.array([100.0, 10.0, -5.0]),
-        mag=np.array([19.0, 18.0, np.nan]),
-        mag_err=np.array([0.1, 0.1, 0.1]),
-    ).finite()
-    assert len(lc) == 2
-    assert lc.time[0] < lc.time[1]
-
-
-def test_single_power_law_recovers_index():
-    t = np.logspace(2, 5, 20)
-    true_alpha = 1.25
-    flux = single_power_law(t, amplitude=500.0, alpha=true_alpha, t_ref=1000.0)
-    rng = np.random.default_rng(7)
-    err = 0.03 * flux
-    noisy = flux + rng.normal(0, err)
-    fit = fit_single_power_law(t, noisy, err)
-    assert abs(fit.params["alpha"] - true_alpha) < 0.05
-    assert fit.reduced_chi2 < 3.0
-
-
-def test_broken_power_law_recovers_break():
-    t = np.logspace(2, 6, 40)
-    flux = broken_power_law(t, amplitude=300.0, t_break=2e4, alpha1=0.8, alpha2=1.9, smooth=3.0)
-    rng = np.random.default_rng(11)
-    err = 0.04 * flux
-    noisy = flux + rng.normal(0, err)
-    fit = fit_broken_power_law(t, noisy, err, smooth=3.0)
-    assert abs(fit.params["alpha1"] - 0.8) < 0.2
-    assert abs(fit.params["alpha2"] - 1.9) < 0.3
-    assert fit.params["alpha2"] > fit.params["alpha1"]
+        header_time_since_trigger(hdr)

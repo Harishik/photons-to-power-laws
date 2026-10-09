@@ -4,18 +4,32 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "grb-afterglow"
-version = "0.1.0"
-description = "Photons to Power Laws: an open pipeline for GRB optical afterglow photometry and light-curve fitting."
+version = "0.2.0"
+description = "Photons to Power Laws: from raw telescope frames to GRB afterglow physics."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
-authors = [{ name = "Photons to Power Laws contributors" }]
-keywords = ["astronomy", "gamma-ray-bursts", "photometry", "astropy", "light-curve"]
+authors = [{ name = "Harishik Dev Singh Jamwal" }]
+keywords = [
+    "astronomy",
+    "gamma-ray bursts",
+    "afterglow",
+    "photometry",
+    "light curves",
+    "closure relations",
+    "astropy",
+    "ztf",
+]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
+    "Intended Audience :: Education",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Astronomy",
 ]
 dependencies = [
@@ -27,8 +41,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7.0"]
-catalogs = ["astroquery>=0.4.6"]
+dev = ["pytest>=7.0", "pytest-cov>=4.0", "ruff>=0.5"]
+
+[project.scripts]
+p2pl = "grb_afterglow.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/Harishik/photons-to-power-laws"
@@ -40,3 +56,27 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+filterwarnings = ["ignore::photutils.utils.exceptions.NoDetectionsWarning"]
+
+[tool.coverage.run]
+source = ["grb_afterglow"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "NPY", "RUF"]
+ignore = [
+    "RUF001",  # Greek letters and other unicode in strings are intentional
+    "RUF002",
+    "RUF003",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E501"]
+"case_studies/*" = ["E402"]

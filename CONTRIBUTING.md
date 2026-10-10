@@ -49,5 +49,7 @@ pytest                      # everything should pass before you start
 
 ## Good first issues
 
-See the roadmap in the README. A colour-term option in `reduce_frame`, PSF
-photometry, and image subtraction are well-scoped next steps.
+See the roadmap in the README. A colour-term option in `reduce_frame` and
+Galactic extinction corrections are well-scoped next steps. New photometry or
+subtraction methods can be scored against the existing ones with the harness
+in `dev/bakeoff/`.

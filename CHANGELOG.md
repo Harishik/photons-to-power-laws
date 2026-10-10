@@ -4,6 +4,57 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [semantic versioning](https://semver.org/).
 
+## [0.3.0] - 2026-10-10
+
+Image subtraction and PSF photometry, the two "future extensions" of the
+original design, chosen by a documented method comparison (`dev/bakeoff/`).
+
+### Added
+- `grb_afterglow.subtraction.subtract_images`: difference imaging against a
+  deep template. The template is resampled through the WCS and the sharper
+  image is convolved with a delta-function-basis kernel (Bramich 2008) fitted
+  with a smooth differential background, an errors-in-variables correction
+  for the noise in the convolved image, Laplacian regularisation, sigma
+  clipping, and a bright-pixel refit of the photometric scale. Returns a
+  `DifferenceImage` in science counts.
+- `grb_afterglow.psf`: empirical PSF photometry. A pixel-integrated elliptical
+  Moffat plus an oversampled, regularised residual map built from the frame's
+  own stars; all sources fitted simultaneously (deblending) with a smooth
+  background; PSF-model errors. `build_psf`, `psf_photometry`, `ConvolvedPSF`
+  and `forced_psf_flux` (forced fits on difference images with errors from
+  blank positions).
+- `PipelineConfig.photometry = "aperture" | "psf"` (zero-point stars and the
+  burst), `Template`, `reduce_frame(template=...)` and
+  `run_pipeline(templates={band: path})`.
+- The simulator adds an r = 21 host galaxy under the afterglow and writes a
+  deep template per band. The demo reduces with templates and PSF photometry,
+  and also without subtraction for comparison: the host flattens the late
+  decay from alpha2 = 2.2 to 1.34 unless it is subtracted.
+- Figures: `plot_subtraction` (science, matched template, difference) for the
+  demo and the ZTF case study, and a with/without-subtraction light curve.
+- A redrawn architecture diagram, rendered from HTML for light and dark themes
+  (`docs/assets/make_architecture.py`).
+- 21 new tests (91 in total) for subtraction, PSF photometry, the template
+  pipeline in both seeing directions, and the seeing estimate.
+
+### Changed
+- GRB 221009A case study: the ZTF reference image is subtracted and the burst
+  is measured with PSF photometry. Detections rise from three to four, their
+  S/N by 1.4 to 1.9 times; the ZTF-only decay index is 1.34 ± 0.09 (was
+  1.53 ± 0.15; Laskar et al. 2023: 1.42 ± 0.01). The v0.2 measurement is kept
+  alongside for comparison.
+
+### Fixed
+- When the template has the worse seeing, the flux on the difference image is
+  now calibrated with the zero-point stars on the kernel-convolved science
+  image (or, for PSF photometry, with the science PSF seen through the
+  kernel). The earlier curve-of-growth correction from template stars was
+  inflated by crowding and gave ZTF fluxes about twice too high.
+- The seeing estimate could be set by a single object: when few sources passed
+  the isolation cut (with photutils 2.0 in a frame with many detections, only
+  the host galaxy did), its width was returned. The isolation radius is now
+  relaxed until at least five stars are fitted.
+
 ## [0.2.0] - 2026-10-10
 
 A rewrite of the reduction core, a physically realistic validation suite, and
@@ -74,5 +125,6 @@ the first application to real telescope data.
 - Initial calibration, detection, aperture photometry, zero-point, light-curve,
   fitting, plotting, and synthetic-data modules, a demo script, and tests.
 
+[0.3.0]: https://github.com/Harishik/photons-to-power-laws/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Harishik/photons-to-power-laws/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Harishik/photons-to-power-laws/releases/tag/v0.1.0

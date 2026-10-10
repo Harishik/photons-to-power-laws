@@ -47,6 +47,20 @@ def test_estimate_fwhm_falls_back_to_guess_without_stars():
     assert estimate_fwhm(np.zeros((10, 10)), empty, guess=4.2) == 4.2
 
 
+def test_estimate_fwhm_is_not_set_by_a_lone_galaxy(star_image):
+    """Stars in close pairs and one isolated, extended galaxy: the isolation radius relaxes to the stars."""
+    fwhm = 3.0
+    pairs = [
+        (x, y) for x0, y0 in ((20, 20), (20, 70), (70, 20), (100, 100), (60, 100)) for x, y in ((x0, y0), (x0 + 9, y0))
+    ]
+    img = star_image(pairs, flux=40000.0, fwhm=fwhm, shape=(130, 130), noise=False)
+    yy, xx = np.mgrid[0:130, 0:130]
+    img += 2000.0 * np.exp(-np.hypot(xx - 105, yy - 45) / 2.5)  # an exponential disk, wider than a star
+    img = np.random.default_rng(3).poisson(img).astype(float)
+    sources = detect_sources(img, fwhm=fwhm)
+    assert estimate_fwhm(img, sources, guess=fwhm) == pytest.approx(fwhm, rel=0.1)
+
+
 def test_background_recovers_gradient():
     _, xx = np.mgrid[0:128, 0:128]
     sky = 100.0 + 0.2 * xx

@@ -177,14 +177,18 @@ def estimate_fwhm(
     *,
     guess: float = 3.0,
     max_stars: int = 25,
+    min_stars: int = 5,
     isolation: float | None = None,
     background: BackgroundModel | np.ndarray | None = None,
 ) -> float:
     """Measure the image seeing by fitting 2-D Gaussians to isolated stars.
 
     The brightest sources without a neighbour inside ``isolation`` pixels are
-    fitted individually and the sigma-clipped median FWHM is returned. If no
-    star can be fitted, ``guess`` is returned unchanged.
+    fitted individually and the sigma-clipped median FWHM is returned. If
+    fewer than ``min_stars`` can be fitted, the isolation radius is relaxed
+    (down to half its value), so that a single object, such as a galaxy,
+    cannot set the seeing on its own. If no star can be fitted, ``guess`` is
+    returned unchanged.
     """
     if len(sources) == 0:
         return float(guess)
@@ -200,22 +204,28 @@ def estimate_fwhm(
     tree = cKDTree(xy)
     neighbour_dist, _ = tree.query(xy, k=2) if len(xy) > 1 else (np.full((1, 2), np.inf), None)
 
-    fwhms: list[float] = []
     ny, nx = image.shape
-    for (x, y), dist in zip(xy, neighbour_dist[:, 1], strict=True):
-        if dist < isolation:
-            continue
-        ix, iy = int(np.rint(x)), int(np.rint(y))
-        if ix - half < 0 or iy - half < 0 or ix + half >= nx or iy + half >= ny:
-            continue
-        stamp = image[iy - half : iy + half + 1, ix - half : ix + half + 1]
-        try:
-            fwhm = _fit_stamp_fwhm(stamp, guess / GAUSSIAN_FWHM_PER_SIGMA)
-        except (RuntimeError, ValueError):
-            continue
-        if 0.5 * guess < fwhm < 4.0 * guess:
-            fwhms.append(fwhm)
-        if len(fwhms) >= max_stars:
+    fitted: dict[int, float | None] = {}  # source index -> FWHM, None if the fit failed
+    for radius in (isolation, 0.75 * isolation, 0.5 * isolation):
+        fwhms: list[float] = []
+        for i, ((x, y), dist) in enumerate(zip(xy, neighbour_dist[:, 1], strict=True)):
+            if dist < radius:
+                continue
+            ix, iy = int(np.rint(x)), int(np.rint(y))
+            if ix - half < 0 or iy - half < 0 or ix + half >= nx or iy + half >= ny:
+                continue
+            if i not in fitted:
+                stamp = image[iy - half : iy + half + 1, ix - half : ix + half + 1]
+                try:
+                    fitted[i] = _fit_stamp_fwhm(stamp, guess / GAUSSIAN_FWHM_PER_SIGMA)
+                except (RuntimeError, ValueError):
+                    fitted[i] = None
+            fwhm = fitted[i]
+            if fwhm is not None and 0.5 * guess < fwhm < 4.0 * guess:
+                fwhms.append(fwhm)
+            if len(fwhms) >= max_stars:
+                break
+        if len(fwhms) >= min_stars:
             break
     if not fwhms:
         return float(guess)

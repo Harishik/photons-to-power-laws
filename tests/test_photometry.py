@@ -77,3 +77,18 @@ def test_negative_flux_has_no_magnitude():
 def test_radii_are_validated():
     with pytest.raises(ValueError):
         forced_photometry(np.zeros((20, 20)), np.array([[10, 10]]), r_aper=5.0, r_in=4.0, r_out=6.0)
+
+
+def test_blank_aperture_noise_sees_correlated_noise():
+    """On white noise it matches the CCD equation; on correlated noise it does not."""
+    from scipy.ndimage import gaussian_filter
+
+    from grb_afterglow.photometry import blank_aperture_noise
+
+    rng = np.random.default_rng(1)
+    white = rng.normal(0, 10, (200, 200))
+    correlated = gaussian_filter(rng.normal(0, 10, (200, 200)), 1.0) * 2.0
+    ccd = float(forced_photometry(white, np.array([[100.0, 100.0]]), r_aper=3.0)["net_counts_err"][0])
+    assert blank_aperture_noise(white, 3.0) == pytest.approx(ccd, rel=0.15)
+    ccd_corr = float(forced_photometry(correlated, np.array([[100.0, 100.0]]), r_aper=3.0)["net_counts_err"][0])
+    assert blank_aperture_noise(correlated, 3.0) > 2.0 * ccd_corr

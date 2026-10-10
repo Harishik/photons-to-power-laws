@@ -18,7 +18,7 @@ from .closure import evaluate_closure_relations
 from .detection import estimate_background
 from .fitting import compare_models, fit_lightcurve
 from .lightcurve import AB_MAG_1UJY, SECONDS_PER_DAY
-from .pipeline import FrameResult, PipelineResult, run_pipeline
+from .pipeline import FrameResult, PipelineConfig, PipelineResult, run_pipeline
 from .synthetic import generate_dataset
 
 
@@ -45,6 +45,11 @@ def run_demo(
 ) -> dict:
     """Simulate, reduce, fit, and validate a synthetic multi-band afterglow.
 
+    The afterglow sits on a host galaxy. Frames are reduced with template
+    subtraction and PSF photometry; for comparison they are also reduced the
+    simple way (aperture photometry on the science image), which lets the host
+    light flatten the late decay.
+
     Writes ``lightcurve.csv``, ``frames.csv``, and ``summary.json`` to
     ``out_dir`` and figures to ``figures_dir`` (default ``out_dir/figures``).
 
@@ -60,19 +65,19 @@ def run_demo(
     out.mkdir(parents=True, exist_ok=True)
     fig_dir.mkdir(parents=True, exist_ok=True)
 
-    log("[1/6] Simulating a g/r/i follow-up campaign ...")
+    log("[1/7] Simulating a g/r/i follow-up campaign with a host galaxy ...")
     truth = generate_dataset(data_dir, seed=seed)
     raw = data_dir / "raw"
     bands = sorted({f["band"] for f in truth["frames"]}, key="gri".index)
 
-    log("[2/6] Building master bias and per-band flats ...")
+    log("[2/7] Building master bias and per-band flats ...")
     master_bias = build_master_bias([load_fits(p)[0] for p in sorted(raw.glob("bias_*.fits"))])
     master_flats = {
         b: build_master_flat([load_fits(p)[0] for p in sorted(raw.glob(f"flat_{b}_*.fits"))], master_bias=master_bias)
         for b in bands
     }
 
-    log("[3/6] Reducing science frames ...")
+    log("[3/7] Reducing science frames: template subtraction + PSF photometry ...")
     catalog = Table.read(data_dir / "catalog.csv", format="ascii.csv")
     target = SkyCoord(truth["afterglow"]["ra"] * u.deg, truth["afterglow"]["dec"] * u.deg)
 
@@ -83,12 +88,16 @@ def run_demo(
             f"F = {f.flux_ujy:9.2f} ± {f.flux_err_ujy:6.2f} µJy"
         )
 
+    science_files = sorted(raw.glob("sci_*.fits"))
+    templates = {b: data_dir / info["file"] for b, info in truth["templates"].items()}
     result = run_pipeline(
-        sorted(raw.glob("sci_*.fits")),
+        science_files,
         target,
         catalog,
         master_bias=master_bias,
         master_flats=master_flats,
+        config=PipelineConfig(photometry="psf"),
+        templates=templates,
         on_frame=report,
     )
     lc = result.lightcurve
@@ -96,14 +105,18 @@ def run_demo(
     lc.save_csv(out / "lightcurve.csv")
     result.summary_table().write(out / "frames.csv", format="ascii.csv", overwrite=True)
 
-    log("[4/6] Fitting single and broken power laws jointly across bands ...")
+    log("[4/7] For comparison: aperture photometry without template subtraction ...")
+    naive = run_pipeline(science_files, target, catalog, master_bias=master_bias, master_flats=master_flats)
+    naive_fit = fit_lightcurve(naive.lightcurve, "broken", reference_band="r")
+
+    log("[5/7] Fitting single and broken power laws jointly across bands ...")
     single = fit_lightcurve(lc, "single", reference_band="r")
     broken = fit_lightcurve(lc, "broken", reference_band="r")
     comparison = compare_models(single, broken)
     log(comparison.summary())
     best = comparison.best
 
-    log("[5/6] Testing closure relations ...")
+    log("[6/7] Testing closure relations ...")
     p, e = broken.params, broken.errors
     pre = evaluate_closure_relations(p["alpha1"], e["alpha1"], p["beta"], e["beta"])
     post = evaluate_closure_relations(p["alpha2"], e["alpha2"], p["beta"], e["beta"])
@@ -168,12 +181,32 @@ def run_demo(
             },
         },
         "injected_regime": ag["regime"],
+        "reduction": {"photometry": "psf", "template_subtraction": True},
+        "host_galaxy_mag_r": truth["host"]["mag_r"] if truth["host"] else None,
+        "without_subtraction": {
+            "photometry": "aperture",
+            "alpha2": naive_fit.params["alpha2"],
+            "alpha2_err": naive_fit.errors["alpha2"],
+            "n_sigma": abs(naive_fit.params["alpha2"] - ag["alpha2"]) / naive_fit.errors["alpha2"],
+        },
     }
     with open(out / "summary.json", "w") as fh:
         json.dump(summary, fh, indent=2)
 
-    log("[6/6] Drawing figures ...")
-    make_demo_figures(result, truth, broken, single, fig_dir, data_dir, master_bias, master_flats, themes=themes)
+    log("[7/7] Drawing figures ...")
+    make_demo_figures(
+        result,
+        truth,
+        broken,
+        single,
+        fig_dir,
+        data_dir,
+        master_bias,
+        master_flats,
+        themes=themes,
+        naive=naive,
+        naive_fit=naive_fit,
+    )
     if animate:
         _make_animation(result, broken, fig_dir / "hero.gif", master_bias, master_flats)
     for r in rows:
@@ -181,6 +214,11 @@ def run_demo(
             f"      {r['parameter']:<13} injected {r['injected']:7.3f}  "
             f"recovered {r['recovered']:7.3f} ± {r['error']:.3f}  ({r['n_sigma']:.1f}σ)"
         )
+    na = summary["without_subtraction"]
+    log(
+        f"      without template subtraction: alpha2 = {na['alpha2']:.3f} ± {na['alpha2_err']:.3f} "
+        f"({na['n_sigma']:.0f}σ from the injected {ag['alpha2']:.2f}: host light)"
+    )
     log(f"Validation: {status}. Outputs in {out}/, figures in {fig_dir}/")
     return summary
 
@@ -196,10 +234,28 @@ def _calibrated(path: str, master_bias, master_flats, band):
 
 
 def make_demo_figures(
-    result, truth, broken, single, fig_dir, data_dir, master_bias, master_flats, *, themes=("light", "dark")
+    result,
+    truth,
+    broken,
+    single,
+    fig_dir,
+    data_dir,
+    master_bias,
+    master_flats,
+    *,
+    themes=("light", "dark"),
+    naive: PipelineResult | None = None,
+    naive_fit=None,
 ):
     """Write the README figures for the synthetic demo."""
-    from .plotting import plot_closure_relations, plot_filmstrip, plot_lightcurve, plot_pipeline_stages, plot_zeropoints
+    from .plotting import (
+        plot_closure_relations,
+        plot_filmstrip,
+        plot_lightcurve,
+        plot_pipeline_stages,
+        plot_subtraction,
+        plot_zeropoints,
+    )
 
     lc = result.lightcurve
     p, e = broken.params, broken.errors
@@ -224,8 +280,52 @@ def make_demo_figures(
             }
         )
 
+    # The subtraction panel: the r frame in which the afterglow is closest to the host's brightness.
+    host_ujy = 10 ** (-0.4 * (truth["host"]["mag_r"] - AB_MAG_1UJY)) if truth.get("host") else 0.0
+    by_name = {f["file"]: f for f in truth["frames"]}
+    sub_frames = [f for f in r_frames if f.difference is not None]
+    sub_frame = (
+        min(sub_frames, key=lambda f: abs(np.log(by_name[Path(f.path).name]["afterglow_flux_ujy"] / host_ujy)))
+        if sub_frames and host_ujy > 0
+        else None
+    )
+
     for theme in themes:
         sfx = f"_{theme}"
+        if sub_frame is not None:
+            _, img = _calibrated(sub_frame.path, master_bias, master_flats, "r")
+            d = sub_frame.difference
+            t = sub_frame.time / SECONDS_PER_DAY
+            fig, _ = plot_subtraction(
+                d.as_difference_psf(img),
+                d.matched_template,
+                d.data,
+                (sub_frame.target.x, sub_frame.target.y),
+                r_aper=sub_frame.r_aper,
+                half=int(5 * sub_frame.fwhm),
+                labels=("Science", "Template, PSF-matched", "Difference"),
+                title=f"Removing the host galaxy (r band, t = {t:.1f} d)",
+                theme=theme,
+                savepath=fig_dir / f"subtraction{sfx}.png",
+            )
+            plt.close(fig)
+        if naive is not None and naive_fit is not None:
+            ag = truth["afterglow"]
+            fig, _ = plot_lightcurve(
+                lc.select("r"),
+                broken,
+                extra=[(naive.lightcurve.select("r"), "without template subtraction")],
+                band_labels={"r": "r, template-subtracted"},
+                theme=theme,
+                title="Unsubtracted host light flattens the late decay",
+                subtitle=(
+                    f"α₂ = {p['alpha2']:.2f} ± {e['alpha2']:.2f} with subtraction, "
+                    f"{naive_fit.params['alpha2']:.2f} ± {naive_fit.errors['alpha2']:.2f} without "
+                    f"(injected {ag['alpha2']:.1f}; host r = {truth['host']['mag_r']:.0f} mag)"
+                ),
+                savepath=fig_dir / f"host_comparison{sfx}.png",
+            )
+            plt.close(fig)
         fig, _ = plot_lightcurve(
             lc,
             broken,
@@ -268,7 +368,7 @@ def make_demo_figures(
             film,
             half=int(4 * stage.fwhm + 4),
             theme=theme,
-            title="The afterglow fading in r band (aperture sized to each frame's seeing)",
+            title="The afterglow fading in r band, leaving its host galaxy behind",
             savepath=fig_dir / f"filmstrip{sfx}.png",
         )
         plt.close(fig)

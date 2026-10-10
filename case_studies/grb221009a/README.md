@@ -31,15 +31,24 @@ Provenance and acknowledgements are in [`data/README.md`](data/README.md).
 
 1. Each ZTF cutout goes through `grb_afterglow.reduce_frame`: background and
    source detection, seeing from isolated stars (typically within 0.1 px of
-   the value in the ZTF header), WCS cross-match with Pan-STARRS1, a per-frame zero
-   point, and forced aperture photometry at the Swift/UVOT position.
-2. The same measurement on the deep reference image gives the flux already at
-   the burst position before the burst (blended field stars and host light):
-   6.5 ± 1.0 µJy in r. It is subtracted from every epoch.
-3. Epochs are inspected in the cutout filmstrip below. The 8.6-day r-band
+   the value in the ZTF header), WCS cross-match with Pan-STARRS1, and a
+   per-frame zero point from empirical-PSF photometry of the matched stars.
+2. The deep pre-burst ZTF reference image (16 frames co-added, FWHM 2.2 px) is
+   used as the template: it is resampled onto each epoch's pixel grid,
+   PSF-matched with a Bramich (2008) kernel, and subtracted, which removes the
+   blended field stars and any host light. In the three detected epochs the
+   seeing is better than in the reference, so the science image is the one
+   convolved and the PSF model is carried through the same kernel.
+3. The afterglow is measured on the difference image by a forced PSF fit at the
+   Swift/UVOT position, with an error from identical fits at blank positions
+   (convolution correlates the pixel noise).
+4. Epochs are inspected in the cutout filmstrip below. The 8.6-day r-band
    image is rejected because a satellite trail crosses the aperture.
-4. A single power law is fitted to the r-band data after one day, where the
+5. A single power law is fitted to the r-band data after one day, where the
    published light curve has already steepened (break at 0.40 ± 0.04 d).
+6. For comparison, the v0.2 measurement is repeated: aperture photometry of
+   each epoch minus the flux in the same aperture on the reference image
+   (6.5 ± 1.0 µJy in r).
 
 ## Results
 
@@ -48,28 +57,40 @@ Provenance and acknowledgements are in [`data/README.md`](data/README.md).
   <img src="figures/lightcurve_light.png" alt="GRB 221009A ZTF r-band light curve with Liverpool Telescope photometry and a power-law fit" width="100%">
 </picture>
 
-Detections in ZTF r (reference-subtracted):
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="figures/subtraction_dark.png">
+  <img src="figures/subtraction_light.png" alt="ZTF cutout at 1.6 days PSF-matched to the reference image, the reference, and the difference image with only the afterglow left" width="100%">
+</picture>
 
-| Days after trigger | Flux density (µJy) | AB mag | S/N |
-|---:|---:|---:|---:|
-| 1.58 | 69.8 ± 4.9 | 19.29 | 14.1 |
-| 3.57 | 20.7 ± 3.3 | 20.61 | 6.4 |
-| 5.61 | 10.3 ± 2.9 | 21.36 | 3.6 |
+Detections in ZTF r (difference imaging, PSF photometry), with the v0.2
+measurement for comparison:
+
+| Days after trigger | Flux density (µJy) | AB mag | S/N | v0.2: aperture − reference (µJy) | v0.2 S/N |
+|---:|---:|---:|---:|---:|---:|
+| 1.58 | 76.2 ± 3.6 | 19.20 | 21.0 | 69.8 ± 4.9 | 14.1 |
+| 3.57 | 21.1 ± 2.3 | 20.59 | 9.1 | 20.7 ± 3.3 | 6.4 |
+| 5.61 | 15.0 ± 2.2 | 20.96 | 6.7 | 10.3 ± 2.9 | 3.6 |
+| 10.56 | 10.4 ± 3.0 | 21.36 | 3.5 | 6.7 ± 3.5 | 1.9 |
 
 | Fit (t ≥ 1 d, r band) | alpha | chi²/dof |
 |---|---:|---:|
-| ZTF only, this pipeline | 1.53 ± 0.15 | 7.2/7 |
+| ZTF only, difference imaging + PSF | 1.34 ± 0.09 | 6.7/7 |
+| ZTF only, v0.2 (aperture − reference flux) | 1.53 ± 0.15 | 7.2/7 |
 | Liverpool Telescope only (refitted here) | 1.40 ± 0.02 | 15.7/17 |
-| ZTF + Liverpool | 1.40 ± 0.02 | 27.5/26 |
+| ZTF + Liverpool | 1.40 ± 0.02 | 22.8/26 |
 | Laskar et al. (2023), r′ after 0.40 d | 1.42 ± 0.01 | |
 
-The decay index measured from ZTF alone agrees with the published value, and
-refitting the Liverpool data with this package's fitter reproduces the
-published index. At the three ZTF detections the ZTF magnitudes are
-+0.10 to +0.24 mag fainter than the Liverpool power law, comparable to the
-per-point errors (0.08 to 0.3 mag). Some offset is expected: ZTF r and the
-Liverpool r′ filter are different bandpasses, and this afterglow is much redder
-than the field stars that set the zero point, so a colour term would shift it.
+Image subtraction with PSF photometry raises the signal-to-noise of every
+detection by a factor of 1.4 to 1.9, adds a fourth detection, and shrinks the
+uncertainty of the ZTF-only decay index by 40 %; both methods agree with the
+published value (0.9σ and 0.8σ), and refitting the Liverpool data with this
+package's fitter reproduces the published index. At the first three ZTF
+detections the ZTF magnitudes are within ±0.17 mag of the Liverpool power law
+(+0.00, +0.15, −0.17 mag), comparable to the per-point errors (0.05 to
+0.16 mag); the marginal 10.6-day point lies 1.7σ above it. Some offset is
+expected: ZTF r and the Liverpool r′ filter are different bandpasses, and this
+afterglow is much redder than the field stars that set the zero point, so a
+colour term would shift it.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="figures/filmstrip_dark.png">
@@ -89,9 +110,15 @@ and the numbers above in [`results/summary.json`](results/summary.json).
 - **Survey cadence.** ZTF's public survey visits the field every two to
   three nights with 30 s exposures, so the afterglow is detected only three
   times before it fades below about r = 21.5.
-- **Aperture photometry in a crowded field.** Subtracting the reference flux
-  removes static blends on average, but differences in seeing between the
-  reference and each epoch leave residuals. Image subtraction would do better.
+- **Calibrating the difference image.** The reference image has worse seeing
+  than the detected epochs, so the difference image carries the reference's
+  PSF and its flux scale has to be tied back to the science image's zero
+  point. The obvious shortcut, an aperture correction from the curve of
+  growth of stars in the deep reference, fails here: in this crowded field,
+  neighbouring stars inside the large "total" apertures inflate it, and the
+  fluxes came out twice too high. The pipeline instead carries the science
+  PSF through the matching kernel (see
+  [`docs/science_background.md`](../../docs/science_background.md)).
 - **No colour term or extinction correction.** Fine for the decay index, which
   is unaffected by constant offsets, but it is why this case study does not
   measure the spectral index beta.

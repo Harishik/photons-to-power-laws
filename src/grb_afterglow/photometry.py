@@ -203,3 +203,69 @@ def aperture_photometry_table(
         exptime=exptime,
         sky_mask=sky_mask,
     )
+
+
+def blank_aperture_noise(
+    image: np.ndarray,
+    r_aper: float,
+    *,
+    mask: np.ndarray | None = None,
+    n_apertures: int = 300,
+    r_in: float | None = None,
+    r_out: float | None = None,
+    seed: int = 0,
+) -> float:
+    """Empirical 1-sigma noise of an aperture sum, from apertures on empty sky.
+
+    Resampling and PSF-matching convolution correlate the noise of
+    neighbouring pixels, so per-pixel variances underestimate the noise of an
+    aperture sum on a difference image. Placing many apertures (with the same
+    local-sky subtraction) where there are no sources and taking the robust
+    scatter of their sums measures the noise that actually applies.
+
+    Parameters
+    ----------
+    image
+        Image to sample, typically a difference image.
+    r_aper, r_in, r_out
+        Aperture and sky-annulus radii, as used for the measurement itself.
+    mask
+        Boolean image, True where sources (or bad pixels) are; apertures are
+        placed only where no masked pixel lies within ``r_out``.
+    n_apertures
+        Number of blank apertures to use.
+    seed
+        Seed for the aperture positions.
+
+    Returns
+    -------
+    float
+        Robust standard deviation (1.4826 x MAD) of the blank-aperture sums,
+        or NaN if fewer than 20 clear positions exist.
+    """
+    from scipy import ndimage
+
+    data = np.asarray(image, dtype=float)
+    r_in = float(r_in if r_in is not None else 3.0 * r_aper)
+    r_out = float(r_out if r_out is not None else 5.0 * r_aper)
+    bad = ~np.isfinite(data)
+    if mask is not None:
+        bad |= np.asarray(mask, dtype=bool)
+    clearance = ndimage.distance_transform_edt(~bad)
+    ny, nx = data.shape
+    margin = int(np.ceil(r_out)) + 1
+    if nx <= 2 * margin or ny <= 2 * margin:
+        return float("nan")
+    ys, xs = np.nonzero(clearance[margin : ny - margin, margin : nx - margin] > r_aper + 1.0)
+    if xs.size < 20:
+        return float("nan")
+    rng = np.random.default_rng(seed)
+    pick = rng.choice(xs.size, size=min(n_apertures, xs.size), replace=False)
+    positions = np.column_stack([xs[pick] + margin, ys[pick] + margin]).astype(float)
+    sky_mask = None if mask is None else np.asarray(mask, dtype=bool)
+    table = forced_photometry(data, positions, r_aper=r_aper, r_in=r_in, r_out=r_out, sky_mask=sky_mask)
+    sums = np.asarray(table["net_counts"], dtype=float)
+    sums = sums[np.isfinite(sums)]
+    if sums.size < 20:
+        return float("nan")
+    return float(1.4826 * np.median(np.abs(sums - np.median(sums))))

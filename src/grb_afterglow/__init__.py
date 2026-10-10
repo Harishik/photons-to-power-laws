@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 __license__ = "MIT"
 
 from .calibration import build_master_bias, build_master_flat, calibrate_frame, combine_frames
@@ -19,16 +19,21 @@ from .fitting import (
 )
 from .lightcurve import LightCurve, flux_to_mag, mag_to_flux
 from .photometry import aperture_photometry_at, aperture_photometry_table, forced_photometry
-from .pipeline import FrameResult, PipelineConfig, PipelineResult, reduce_frame, run_pipeline
+from .pipeline import FrameResult, PipelineConfig, PipelineResult, Template, reduce_frame, run_pipeline
+from .psf import EmpiricalPSF, build_psf, psf_photometry
+from .subtraction import DifferenceImage, subtract_images
 from .zeropoint import ZeroPoint, calibrate_magnitudes, compute_zeropoint, match_sky, match_xy
 
 __all__ = [
     "CLOSURE_RELATIONS",
+    "DifferenceImage",
+    "EmpiricalPSF",
     "FitResult",
     "FrameResult",
     "LightCurve",
     "PipelineConfig",
     "PipelineResult",
+    "Template",
     "ZeroPoint",
     "__version__",
     "aperture_photometry_at",
@@ -36,6 +41,7 @@ __all__ = [
     "broken_power_law",
     "build_master_bias",
     "build_master_flat",
+    "build_psf",
     "calibrate_frame",
     "calibrate_magnitudes",
     "combine_frames",
@@ -53,7 +59,9 @@ __all__ = [
     "mag_to_flux",
     "match_sky",
     "match_xy",
+    "psf_photometry",
     "reduce_frame",
     "run_pipeline",
     "single_power_law",
+    "subtract_images",
 ]

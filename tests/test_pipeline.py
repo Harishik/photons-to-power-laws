@@ -9,18 +9,19 @@ from astropy.coordinates import SkyCoord
 from astropy.table import Table
 
 from grb_afterglow import (
+    PipelineConfig,
     build_master_bias,
     build_master_flat,
     evaluate_closure_relations,
     fit_lightcurve,
     run_pipeline,
 )
-from grb_afterglow.calibration import load_fits
-from grb_afterglow.pipeline import header_time_since_trigger
+from grb_afterglow.calibration import calibrate_frame, load_fits
+from grb_afterglow.pipeline import Template, header_time_since_trigger, reduce_frame
 
 
 @pytest.fixture(scope="module")
-def reduced(small_campaign):
+def calibration(small_campaign):
     out, truth = small_campaign
     raw = out / "raw"
     bias = build_master_bias([load_fits(p)[0] for p in sorted(raw.glob("bias_*.fits"))])
@@ -30,14 +31,39 @@ def reduced(small_campaign):
     }
     catalog = Table.read(out / "catalog.csv", format="ascii.csv")
     target = SkyCoord(truth["afterglow"]["ra"] * u.deg, truth["afterglow"]["dec"] * u.deg)
-    result = run_pipeline(sorted(raw.glob("sci_*.fits")), target, catalog, master_bias=bias, master_flats=flats)
+    templates = {b: out / info["file"] for b, info in truth["templates"].items()}
+    return raw, bias, flats, catalog, target, templates
+
+
+@pytest.fixture(scope="module")
+def reduced(small_campaign, calibration):
+    """The recommended reduction: template subtraction and PSF photometry."""
+    _, truth = small_campaign
+    raw, bias, flats, catalog, target, templates = calibration
+    result = run_pipeline(
+        sorted(raw.glob("sci_*.fits")),
+        target,
+        catalog,
+        master_bias=bias,
+        master_flats=flats,
+        config=PipelineConfig(photometry="psf"),
+        templates=templates,
+    )
     return result, truth
+
+
+def _late_r_frames(raw, truth, n=3):
+    frames = sorted((f for f in truth["frames"] if f["band"] == "r"), key=lambda f: f["time_s"])[-n:]
+    return [raw / f["file"] for f in frames], {f["file"]: f for f in frames}
 
 
 def test_every_frame_is_calibrated(reduced):
     result, truth = reduced
     assert len(result.frames) == len(truth["frames"])
     assert all(f.zeropoint.n_stars >= 5 for f in result.frames)
+    assert all(f.subtracted and f.photometry == "psf" and f.psf is not None for f in result.frames)
+    # The templates are sharper than every science frame, so they are the image that gets convolved.
+    assert all(f.difference.psf_from == "science" for f in result.frames)
 
 
 def test_fluxes_are_unbiased_with_honest_errors(reduced):
@@ -91,3 +117,74 @@ def test_header_time_since_trigger():
     assert header_time_since_trigger(hdr, 60000.0) == pytest.approx(43215.0)
     with pytest.raises(ValueError):
         header_time_since_trigger(hdr)
+
+
+def test_simulator_writes_templates_and_host(small_campaign):
+    from astropy.io import fits
+
+    out, truth = small_campaign
+    assert truth["host"] is not None and truth["host"]["mag_r"] > 0
+    for band, info in truth["templates"].items():
+        header = fits.getheader(out / info["file"])
+        assert header["IMAGETYP"] == "TEMPLATE" and header["FILTER"] == band
+        assert header["EXPTIME"] > 0 and "CTYPE1" in header
+
+
+def test_template_subtraction_removes_host_light(small_campaign, calibration):
+    """Aperture photometry of the late r frames, with and without the template."""
+    _, truth = small_campaign
+    raw, bias, flats, catalog, target, templates = calibration
+    files, by_name = _late_r_frames(raw, truth)
+    host_ujy = 10 ** (-0.4 * (truth["host"]["mag_r"] - 23.9))
+
+    def offsets(result):
+        assert len(result.frames) == len(files)
+        return np.array([f.flux_ujy - by_name[f.path.split("/")[-1]]["afterglow_flux_ujy"] for f in result.frames])
+
+    plain = run_pipeline(files, target, catalog, master_bias=bias, master_flats=flats)
+    subtracted = run_pipeline(files, target, catalog, master_bias=bias, master_flats=flats, templates=templates)
+    assert all(f.photometry == "aperture" and f.subtracted for f in subtracted.frames)
+    # Without the template most of the host's light is measured as afterglow; with it, little remains.
+    assert offsets(plain).mean() > 0.5 * host_ujy
+    assert abs(offsets(subtracted).mean()) < 0.3 * host_ujy
+
+
+@pytest.mark.parametrize("photometry", ["aperture", "psf"])
+def test_template_blurrier_than_science(small_campaign, calibration, photometry):
+    """The science image is convolved instead (a deliberately extreme case: template FWHM ~1.7x the science)."""
+    from scipy.ndimage import gaussian_filter
+
+    out, truth = small_campaign
+    raw, bias, flats, catalog, target, _ = calibration
+    sharp = Template.from_fits(out / truth["templates"]["r"]["file"])
+    blurred = gaussian_filter(sharp.image, 2.6)  # FWHM ~ 6.6 px, wider than every science frame
+    template = Template(blurred, sharp.wcs, float(np.hypot(sharp.fwhm, 2.355 * 2.6)))
+    frames = sorted((f for f in truth["frames"] if f["band"] == "r"), key=lambda f: f["time_s"])[1:3]
+    for info in frames:
+        image_raw, header = load_fits(raw / info["file"])
+        image = calibrate_frame(image_raw, master_bias=bias, master_flat=flats["r"])
+        from astropy.wcs import WCS
+
+        result = reduce_frame(
+            image,
+            WCS(header),
+            target,
+            catalog,
+            band="r",
+            time=header["TSINCE"],
+            exptime=header["EXPTIME"],
+            gain=header["GAIN"],
+            config=PipelineConfig(photometry=photometry),
+            template=template,
+        )
+        assert result.difference.psf_from == "template"
+        assert result.difference.fwhm > result.fwhm
+        if photometry == "psf":  # the science PSF through the kernel is exact
+            assert result.flux_ujy == pytest.approx(info["afterglow_flux_ujy"], abs=4 * result.flux_err_ujy)
+        else:  # transferring the aperture scale through convolved stars is good to a few per cent
+            assert result.flux_ujy == pytest.approx(info["afterglow_flux_ujy"], rel=0.05)
+
+
+def test_photometry_option_is_validated():
+    with pytest.raises(ValueError):
+        PipelineConfig(photometry="optimal")

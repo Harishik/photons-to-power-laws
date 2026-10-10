@@ -1,23 +1,23 @@
-file,band,time_days,fwhm_px,zeropoint,zeropoint_err,n_zp_stars,flux_ujy,flux_err_ujy,snr,status
-ztf_20221009182442_zg_sciimg.fits,zg,-0.371,nan,nan,nan,nan,nan,nan,nan,no zero point
-ztf_20221011129144_zr_sciimg.fits,zr,1.576,1.493,22.48,0.01207,36.0,69.77,4.938,14.13,ok
-ztf_20221011178206_zg_sciimg.fits,zg,1.625,nan,nan,nan,nan,nan,nan,nan,no zero point
-ztf_20221013127257_zr_sciimg.fits,zr,3.574,1.736,22.53,0.009708,40.0,20.75,3.258,6.368,ok
-ztf_20221013183299_zg_sciimg.fits,zg,3.63,nan,nan,nan,nan,nan,nan,nan,no zero point
-ztf_20221015145451_zg_sciimg.fits,zg,5.592,2.405,22.27,0.01708,12.0,1.808,3.384,0.5345,ok
-ztf_20221015164722_zr_sciimg.fits,zr,5.611,1.599,22.5,0.009319,39.0,10.35,2.896,3.573,ok
-ztf_20221018118414_zg_sciimg.fits,zg,8.565,1.787,22.24,0.01372,12.0,-1.255,3.321,-0.3778,ok
-ztf_20221018154699_zr_sciimg.fits,zr,8.601,1.715,22.52,0.02093,31.0,9.181,4.017,2.285,satellite trail
-ztf_20221020113183_zr_sciimg.fits,zr,10.56,2.105,22.64,0.012,34.0,6.744,3.53,1.91,ok
-ztf_20221022128970_zr_sciimg.fits,zr,12.58,1.706,22.49,0.01137,40.0,-0.4624,2.762,-0.1674,ok
-ztf_20221022171852_zg_sciimg.fits,zg,12.62,2.195,22.23,0.02457,10.0,2.022,4.318,0.4682,ok
-ztf_20221025132627_zr_sciimg.fits,zr,15.58,1.932,22.62,0.01247,36.0,-0.29,3.505,-0.08274,ok
-ztf_20221025225671_zg_sciimg.fits,zg,15.67,nan,nan,nan,nan,nan,nan,nan,no zero point
-ztf_20221027152963_zg_sciimg.fits,zg,17.6,2.595,22.21,0.01464,6.0,-3.438,6.297,-0.5461,ok
-ztf_20221029174850_zr_sciimg.fits,zr,19.62,2.456,22.62,0.01529,28.0,3.966,4.674,0.8485,ok
-ztf_20221031110694_zr_sciimg.fits,zr,21.56,2.086,22.59,0.01307,31.0,-2.706,4.39,-0.6164,ok
-ztf_20221031162812_zg_sciimg.fits,zg,21.61,2.33,22.19,0.04157,6.0,-9.358,6.228,-1.503,ok
-ztf_20221105112280_zr_sciimg.fits,zr,26.56,2.861,22.4,0.01834,11.0,22.45,11.65,1.926,ok
-ztf_20221105155185_zg_sciimg.fits,zg,26.6,nan,nan,nan,nan,nan,nan,nan,no zero point
-ztf_20221107133935_zg_sciimg.fits,zg,28.58,nan,nan,nan,nan,nan,nan,nan,no zero point
-ztf_20221112161782_zg_sciimg.fits,zg,33.61,nan,nan,nan,nan,nan,nan,nan,no zero point
+file,band,time_days,fwhm_px,diff_fwhm_px,zeropoint,zeropoint_err,n_zp_stars,flux_ujy,flux_err_ujy,snr,flux_refsub_aperture_ujy,flux_refsub_aperture_err_ujy,status
+ztf_20221009182442_zg_sciimg.fits,zg,-0.371,nan,nan,nan,nan,nan,nan,nan,nan,nan,nan,no zero point
+ztf_20221011129144_zr_sciimg.fits,zr,1.576,1.493,2.187,22.84,0.01294,24.0,76.21,3.632,20.98,69.77,4.938,ok
+ztf_20221011178206_zg_sciimg.fits,zg,1.625,nan,nan,nan,nan,nan,nan,nan,nan,nan,nan,no zero point
+ztf_20221013127257_zr_sciimg.fits,zr,3.574,1.736,2.187,22.88,0.009307,39.0,21.08,2.307,9.135,20.75,3.258,ok
+ztf_20221013183299_zg_sciimg.fits,zg,3.63,nan,nan,nan,nan,nan,nan,nan,nan,nan,nan,no zero point
+ztf_20221015145451_zg_sciimg.fits,zg,5.592,2.405,2.405,22.53,0.027,13.0,-1.391,2.374,-0.5859,1.808,3.384,ok
+ztf_20221015164722_zr_sciimg.fits,zr,5.611,1.599,2.187,22.84,0.007767,36.0,15.01,2.237,6.711,10.35,2.896,ok
+ztf_20221018118414_zg_sciimg.fits,zg,8.565,1.787,2.414,22.57,0.01713,14.0,2.165,2.609,0.8299,-1.255,3.321,ok
+ztf_20221018154699_zr_sciimg.fits,zr,8.601,1.715,2.187,22.88,0.01122,24.0,6.353,4.595,1.383,9.181,4.017,satellite trail
+ztf_20221020113183_zr_sciimg.fits,zr,10.56,2.105,2.105,22.9,0.0111,36.0,10.4,2.995,3.472,6.744,3.53,ok
+ztf_20221022128970_zr_sciimg.fits,zr,12.58,1.706,2.187,22.86,0.007993,37.0,6.461,2.556,2.528,-0.4624,2.762,ok
+ztf_20221022171852_zg_sciimg.fits,zg,12.62,2.195,2.414,22.47,0.03197,12.0,3.007,3.564,0.8438,2.022,4.318,ok
+ztf_20221025132627_zr_sciimg.fits,zr,15.58,1.932,2.187,22.89,0.008655,33.0,4.242,2.865,1.481,-0.29,3.505,ok
+ztf_20221025225671_zg_sciimg.fits,zg,15.67,nan,nan,nan,nan,nan,nan,nan,nan,nan,nan,no zero point
+ztf_20221027152963_zg_sciimg.fits,zg,17.6,2.595,2.595,22.49,0.0163,6.0,0.713,5.323,0.134,-3.438,6.297,ok
+ztf_20221029174850_zr_sciimg.fits,zr,19.62,2.456,2.456,22.89,0.0159,29.0,1.349,3.496,0.386,3.966,4.674,ok
+ztf_20221031110694_zr_sciimg.fits,zr,21.56,2.086,2.086,22.93,0.01038,30.0,3.598,3.316,1.085,-2.706,4.39,ok
+ztf_20221031162812_zg_sciimg.fits,zg,21.61,2.33,2.33,22.49,0.03559,8.0,-3.411,5.639,-0.6049,-9.358,6.228,ok
+ztf_20221105112280_zr_sciimg.fits,zr,26.56,2.861,2.861,22.71,0.01648,11.0,5.22,9.357,0.5579,22.45,11.65,ok
+ztf_20221105155185_zg_sciimg.fits,zg,26.6,nan,nan,nan,nan,nan,nan,nan,nan,nan,nan,no zero point
+ztf_20221107133935_zg_sciimg.fits,zg,28.58,nan,nan,nan,nan,nan,nan,nan,nan,nan,nan,no zero point
+ztf_20221112161782_zg_sciimg.fits,zg,33.61,nan,nan,nan,nan,nan,nan,nan,nan,nan,nan,no zero point

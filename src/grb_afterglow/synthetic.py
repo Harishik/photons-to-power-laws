@@ -11,7 +11,10 @@ to do:
 * variable seeing (Moffat PSFs) and variable atmospheric transparency, so the
   zero point must be solved per frame;
 * bright stars that saturate in long exposures;
-* exposure times that grow as the afterglow fades, as in real follow-up.
+* exposure times that grow as the afterglow fades, as in real follow-up;
+* a host galaxy under the afterglow, which dominates the light once the
+  afterglow has faded, and a deep reference image per band (taken long after
+  the burst) for image subtraction.
 
 The injected afterglow obeys a closure relation of the standard fireball
 model, so the full chain from pixels to physics can be validated.
@@ -28,6 +31,7 @@ import numpy as np
 from astropy.io import fits
 from astropy.table import Table
 from astropy.wcs import WCS
+from scipy.signal import fftconvolve
 
 from .fitting import band_frequency_hz, broken_power_law
 from .lightcurve import SECONDS_PER_DAY, flux_to_mag, mag_to_flux
@@ -71,6 +75,27 @@ class AfterglowModel:
 
 
 @dataclass
+class HostGalaxy:
+    """An exponential-disk host galaxy, offset slightly from the afterglow.
+
+    The defaults give a galaxy whose light inside a seeing-sized aperture is
+    comparable to the afterglow a day or two after the burst, so measurements
+    without image subtraction are visibly biased at late times.
+    """
+
+    mag_r: float = 21.0
+    r_eff_arcsec: float = 1.0
+    axis_ratio: float = 0.6
+    position_angle_deg: float = 35.0
+    offset_arcsec: tuple[float, float] = (0.45, -0.3)
+    color_gr: float = 0.7
+    color_ri: float = 0.35
+
+    def mag(self, band: str) -> float:
+        return {"g": self.mag_r + self.color_gr, "r": self.mag_r, "i": self.mag_r - self.color_ri}[band[-1:]]
+
+
+@dataclass
 class SyntheticConfig:
     """Instrument, site, and campaign parameters for :func:`generate_dataset`."""
 
@@ -103,6 +128,10 @@ class SyntheticConfig:
     n_bias: int = 7
     n_flat: int = 5
     afterglow: AfterglowModel = field(default_factory=AfterglowModel)
+    host: HostGalaxy | None = field(default_factory=HostGalaxy)
+    template_seeing_arcsec: float = 1.2
+    template_exptime: float = 1800.0
+    template_ncombine: int = 6
 
 
 def _moffat_stamp(dx: float, dy: float, fwhm: float, beta: float, half: int, sub: int = 3) -> np.ndarray:
@@ -126,6 +155,38 @@ def _add_source(scene: np.ndarray, x: float, y: float, electrons: float, fwhm: f
     if x0 >= x1 or y0 >= y1:
         return
     scene[y0:y1, x0:x1] += stamp[y0 - (iy - half) : y1 - (iy - half), x0 - (ix - half) : x1 - (ix - half)]
+
+
+def _add_host(
+    scene: np.ndarray,
+    x: float,
+    y: float,
+    electrons: float,
+    host: HostGalaxy,
+    pixel_scale: float,
+    fwhm: float,
+    beta: float,
+) -> None:
+    """Add a PSF-convolved, pixel-integrated exponential disk centred at (x, y)."""
+    r_eff = host.r_eff_arcsec / pixel_scale
+    half = int(np.ceil(7 * r_eff + 4 * fwhm))
+    ix, iy = int(np.rint(x)), int(np.rint(y))
+    sub = 3
+    off = (np.arange(sub) + 0.5) / sub - 0.5
+    grid = np.arange(-half, half + 1)
+    yy = grid[:, None, None, None] + off[None, None, :, None] - (y - iy)
+    xx = grid[None, :, None, None] + off[None, None, None, :] - (x - ix)
+    pa = np.radians(host.position_angle_deg)
+    xr = np.cos(pa) * xx + np.sin(pa) * yy
+    yr = (-np.sin(pa) * xx + np.cos(pa) * yy) / host.axis_ratio
+    disk = np.exp(-1.678 * np.hypot(xr, yr) / r_eff).mean(axis=(2, 3))
+    psf = _moffat_stamp(0.0, 0.0, fwhm, beta, int(np.ceil(4 * fwhm)))
+    stamp = fftconvolve(disk / disk.sum(), psf / psf.sum(), mode="same") * electrons
+    ny, nx = scene.shape
+    x0, x1 = max(ix - half, 0), min(ix + half + 1, nx)
+    y0, y1 = max(iy - half, 0), min(iy + half + 1, ny)
+    if x0 < x1 and y0 < y1:
+        scene[y0:y1, x0:x1] += stamp[y0 - (iy - half) : y1 - (iy - half), x0 - (ix - half) : x1 - (ix - half)]
 
 
 def _make_wcs(cfg: SyntheticConfig, dx: float = 0.0, dy: float = 0.0) -> WCS:
@@ -176,9 +237,11 @@ def generate_dataset(
 ) -> dict:
     """Generate a synthetic multi-band GRB follow-up campaign on disk.
 
-    Writes ``raw/`` (bias, flat, and science FITS frames), ``catalog.csv``
-    (the reference star catalog a real survey would provide), and
-    ``truth.json`` (everything the pipeline is supposed to recover).
+    Writes ``raw/`` (bias, flat, and science FITS frames), ``templates/``
+    (one deep, calibrated reference image per band, taken after the afterglow
+    has faded), ``catalog.csv`` (the reference star catalog a real survey would
+    provide), and ``truth.json`` (everything the pipeline is supposed to
+    recover).
 
     Returns
     -------
@@ -193,9 +256,23 @@ def generate_dataset(
     ny, nx = cfg.shape
     gain, rn = cfg.gain, cfg.read_noise
 
-    ag_ra = cfg.field_ra + cfg.afterglow_offset_arcsec[0] / 3600.0 / np.cos(np.radians(cfg.field_dec))
+    cos_dec = np.cos(np.radians(cfg.field_dec))
+    ag_ra = cfg.field_ra + cfg.afterglow_offset_arcsec[0] / 3600.0 / cos_dec
     ag_dec = cfg.field_dec + cfg.afterglow_offset_arcsec[1] / 3600.0
     catalog = _star_catalog(cfg, rng, ag_ra, ag_dec)
+    host = cfg.host
+    if host is not None:
+        host_ra = ag_ra + host.offset_arcsec[0] / 3600.0 / cos_dec
+        host_dec = ag_dec + host.offset_arcsec[1] / 3600.0
+
+    def add_static_scene(scene, wcs, band, fwhm_px, electrons):
+        sx, sy = wcs.world_to_pixel_values(catalog["ra"], catalog["dec"])
+        for x, y, mag in zip(sx, sy, catalog[f"{band}_true"], strict=True):
+            _add_source(scene, x, y, float(electrons(mag)), fwhm_px, cfg.moffat_beta)
+        if host is not None:
+            hx, hy = wcs.world_to_pixel_values(host_ra, host_dec)
+            e_host = float(electrons(host.mag(band)))
+            _add_host(scene, float(hx), float(hy), e_host, host, cfg.pixel_scale, fwhm_px, cfg.moffat_beta)
 
     # Detector signatures shared by every frame.
     column_pattern = rng.normal(0.0, 2.0, nx)[None, :]
@@ -240,9 +317,7 @@ def generate_dataset(
 
             sky_pix_mag = cfg.sky_mag_arcsec2[band] - 2.5 * np.log10(cfg.pixel_scale**2)
             scene = np.full(cfg.shape, float(electrons(sky_pix_mag)))
-            sx, sy = wcs.world_to_pixel_values(catalog["ra"], catalog["dec"])
-            for x, y, mag in zip(sx, sy, catalog[f"{band}_true"], strict=True):
-                _add_source(scene, x, y, float(electrons(mag)), fwhm_px, cfg.moffat_beta)
+            add_static_scene(scene, wcs, band, fwhm_px, electrons)
             ag_flux = float(cfg.afterglow.flux_ujy(t_mid, band))
             ag_x, ag_y = wcs.world_to_pixel_values(ag_ra, ag_dec)
             _add_source(
@@ -273,6 +348,38 @@ def generate_dataset(
                 }
             )
 
+    # Deep reference images, taken long after the burst: stars and host only, already calibrated.
+    templates = {}
+    tdir = out / "templates"
+    tdir.mkdir(exist_ok=True)
+    for band in cfg.bands:
+        dx, dy = rng.uniform(-cfg.dither_px, cfg.dither_px, 2)
+        wcs = _make_wcs(cfg, dx, dy)
+        fwhm_px = cfg.template_seeing_arcsec / cfg.pixel_scale
+        zp = cfg.zeropoint[band] - cfg.extinction_coeff[band] * 1.1
+        texp = cfg.template_exptime
+
+        def t_electrons(mag, zp=zp, texp=texp):
+            return gain * texp * 10 ** (-0.4 * (np.asarray(mag) - zp))
+
+        sky_pix_mag = cfg.sky_mag_arcsec2[band] - 2.5 * np.log10(cfg.pixel_scale**2)
+        scene = np.full(cfg.shape, float(t_electrons(sky_pix_mag)))
+        add_static_scene(scene, wcs, band, fwhm_px, t_electrons)
+        n = cfg.template_ncombine
+        counts = (rng.poisson(scene) + rng.normal(0.0, rn * np.sqrt(n), cfg.shape)) / gain
+        counts = np.minimum(counts, cfg.saturation * n)
+        hdr = wcs.to_header()
+        hdr["IMAGETYP"] = "TEMPLATE"
+        hdr["OBJECT"] = "SYNTHETIC-GRB"
+        hdr["FILTER"] = band
+        hdr["EXPTIME"] = (texp, "Total exposure time of the coadd [s]")
+        hdr["NCOMBINE"] = n
+        hdr["GAIN"] = (gain, "e-/ADU")
+        hdr["SATURATE"] = (cfg.saturation * n, "ADU")
+        name = f"template_{band}.fits"
+        fits.PrimaryHDU(counts.astype(np.float32), hdr).writeto(tdir / name, overwrite=True)
+        templates[band] = {"file": f"templates/{name}", "seeing_arcsec": cfg.template_seeing_arcsec, "zeropoint": zp}
+
     catalog_out = catalog.copy()
     catalog_out.remove_columns([f"{b}_true" for b in cfg.bands])
     catalog_out.write(out / "catalog.csv", format="ascii.csv", overwrite=True)
@@ -291,9 +398,13 @@ def generate_dataset(
             "smooth": ag.smooth,
             "regime": "ISM, slow cooling, nu_m < nu < nu_c, jet break",
         },
+        "host": None
+        if host is None
+        else {"ra": host_ra, "dec": host_dec, **{f"mag_{b}": host.mag(b) for b in cfg.bands}, **asdict(host)},
         "detector": {"gain": gain, "read_noise": rn, "saturation": cfg.saturation},
-        "config": {k: v for k, v in asdict(cfg).items() if k != "afterglow"},
+        "config": {k: v for k, v in asdict(cfg).items() if k not in ("afterglow", "host")},
         "frames": frames,
+        "templates": templates,
     }
     with open(out / "truth.json", "w") as fh:
         json.dump(truth, fh, indent=2, default=float)

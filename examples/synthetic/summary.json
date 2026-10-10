@@ -11,76 +11,87 @@
     {
       "parameter": "alpha1",
       "injected": 0.9000000000000001,
-      "recovered": 0.9006579351925147,
-      "error": 0.0011553678545483679,
-      "n_sigma": 0.5694594928571424,
+      "recovered": 0.9006978325439515,
+      "error": 0.0011198516225899356,
+      "n_sigma": 0.6231473258372228,
       "pass": true
     },
     {
       "parameter": "alpha2",
       "injected": 2.2,
-      "recovered": 2.206341545111026,
-      "error": 0.04274667478223641,
-      "n_sigma": 0.1483517757423622,
+      "recovered": 2.1865747534173163,
+      "error": 0.03802230499951148,
+      "n_sigma": 0.3530887089264141,
       "pass": true
     },
     {
       "parameter": "beta",
       "injected": 0.6000000000000001,
-      "recovered": 0.5998446619769368,
-      "error": 0.006505243266386291,
-      "n_sigma": 0.023878895331400155,
+      "recovered": 0.6081874805093419,
+      "error": 0.006055397610827256,
+      "n_sigma": 1.3520962677500028,
       "pass": true
     },
     {
       "parameter": "t_break_days",
       "injected": 0.5,
-      "recovered": 0.5009657338604063,
-      "error": 0.011184002744756373,
-      "n_sigma": 0.0863495729075273,
+      "recovered": 0.4935627103662131,
+      "error": 0.010668844655440497,
+      "n_sigma": 0.6033727026388257,
       "pass": true
     },
     {
       "parameter": "p",
       "injected": 2.2,
-      "recovered": 2.1996893239538737,
-      "error": 0.013010486532772581,
-      "n_sigma": 0.02387889533138309,
+      "recovered": 2.216374961018684,
+      "error": 0.012110795221654508,
+      "n_sigma": 1.352096267750003,
       "pass": true
     }
   ],
   "flux_pulls": {
-    "mean": 0.1326290062681556,
-    "std": 0.7911425673619603
+    "mean": 0.3692117372355318,
+    "std": 0.9085435620373532
   },
   "model_comparison": {
     "single_power_law": {
-      "chi2": 15236.791338867133,
+      "chi2": 17069.48815105603,
       "dof": 33,
-      "aic": 15242.791338867133,
-      "bic": 15247.541895682501
+      "aic": 17075.48815105603,
+      "bic": 17080.2387078714
     },
     "broken_power_law": {
-      "chi2": 20.3708303472264,
+      "chi2": 20.976956733564766,
       "dof": 31,
-      "aic": 30.3708303472264,
-      "bic": 38.28842503950695
+      "aic": 30.976956733564766,
+      "bic": 38.894551425845314
     }
   },
   "preferred_model": "broken_power_law",
   "closure": {
     "pre_break": {
       "relation": "ISM, \u03bd_m < \u03bd < \u03bd_c",
-      "p": 2.1996893239538737,
-      "p_err": 0.013010486532772581,
-      "n_sigma": 0.09067166689785705
+      "p": 2.216374961018684,
+      "p_err": 0.012110795221654508,
+      "n_sigma": 1.2656855210476703
     },
     "post_break": {
       "relation": "Post-jet-break, \u03bd_m < \u03bd < \u03bd_c",
-      "p": 2.1996893239538737,
-      "p_err": 0.013010486532772581,
-      "n_sigma": 0.1488766126504251
+      "p": 2.216374961018684,
+      "p_err": 0.012110795221654508,
+      "n_sigma": 0.7467886349127242
     }
   },
-  "injected_regime": "ISM, slow cooling, nu_m < nu < nu_c, jet break"
+  "injected_regime": "ISM, slow cooling, nu_m < nu < nu_c, jet break",
+  "reduction": {
+    "photometry": "psf",
+    "template_subtraction": true
+  },
+  "host_galaxy_mag_r": 21.0,
+  "without_subtraction": {
+    "photometry": "aperture",
+    "alpha2": 1.3386214094148834,
+    "alpha2_err": 0.012213458935413042,
+    "n_sigma": 70.5269977276905
+  }
 }

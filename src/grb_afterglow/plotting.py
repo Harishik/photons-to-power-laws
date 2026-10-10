@@ -758,3 +758,53 @@ def plot_pipeline_stages(
         fig.subplots_adjust(wspace=0.05)
         _save(fig, savepath)
         return fig, axes
+
+
+def plot_subtraction(
+    science: np.ndarray,
+    template: np.ndarray,
+    difference: np.ndarray,
+    xy: tuple[float, float],
+    *,
+    r_aper: float,
+    half: int = 30,
+    labels: Sequence[str] = ("Science", "Template, PSF-matched", "Difference"),
+    title: str | None = None,
+    theme: str = "light",
+    savepath: str | PathLike[str] | None = None,
+):
+    """Science, matched template, and difference cutouts around the burst.
+
+    The three panels share one brightness scale (set from the science cutout),
+    so static sources visibly cancel and only the transient survives in the
+    difference.
+    """
+    cuts = [_cutout(np.asarray(img, float), xy[0], xy[1], half) for img in (science, template, difference)]
+    sci_cut = cuts[0][0]
+    finite = sci_cut[np.isfinite(sci_cut)]
+    sky = float(np.median(finite))
+    vmin, vmax = ZScaleInterval(contrast=0.25).get_limits(finite - sky)
+    norm = ImageNormalize(vmin=vmin, vmax=vmax + 4 * (vmax - vmin), stretch=AsinhStretch(0.15))
+    with themed(theme) as t:
+        fig, axes = plt.subplots(1, 3, figsize=(9.6, 3.6))
+        accent = THEMES[theme].series[0]
+        for ax, (cut, cx, cy), label, offset in zip(
+            axes, cuts, labels, (sky, float(np.median(cuts[1][0])), 0.0), strict=True
+        ):
+            ax.imshow(cut - offset, origin="lower", cmap="gray", norm=norm, interpolation="nearest")
+            ax.add_patch(Circle((cx, cy), r_aper, fill=False, ec=accent, lw=1.4))
+            ax.set_title(label, fontsize=10.5, loc="center")
+            ax.set_xticks([])
+            ax.set_yticks([])
+            ax.grid(False)
+            for spine in ax.spines.values():
+                spine.set_visible(False)
+        for ax, sym in zip(axes[:2], ("−", "="), strict=True):
+            ax.text(
+                1.04, 0.5, sym, transform=ax.transAxes, fontsize=20, color=t.ink_secondary, ha="center", va="center"
+            )
+        if title:
+            fig.suptitle(title, x=0.01, ha="left", fontsize=11.5, color=t.ink, weight="bold")
+        fig.subplots_adjust(wspace=0.12, left=0.01, right=0.99, bottom=0.02, top=0.84 if title else 0.9)
+        _save(fig, savepath)
+        return fig, axes

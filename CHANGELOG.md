@@ -4,6 +4,57 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [semantic versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- `grb_afterglow.filters`: a registry of 35 system transmission curves (ZTF,
+  Pan-STARRS1, SDSS, Liverpool IO:O, Gemini GMOS-S and Flamingos-2, Palomar
+  WIRC, 2MASS, HST WFC3) from the SVO Filter Profile Service, committed as
+  package data with their provenance (`scripts/fetch_filters.py` rebuilds
+  them). Bands are named `"instrument:filter"`. Energy-counter curves are
+  converted to photon counting; every pivot wavelength matches SVO's to 0.001 %.
+  `register_bandpass` adds your own.
+- `grb_afterglow.spectral.SpectralModel`: synthetic photometry of a power law
+  behind Galactic (CCM89) and host (SMC) dust through any filter curve,
+  precomputed as quadrature weights so that a model evaluation is one weighted
+  sum.
+- Multi-instrument fitting: `fit_lightcurve(..., ebv_mw=, bandpasses=,
+  calibration_offsets=)`. The model is integrated over each band's filter
+  curve, the Galactic dust is forward-modelled instead of removed from the
+  data, and zero-point offsets per instrument or band are fitted with Gaussian
+  priors. `FitResult.predict_band`, `FitResult.offsets` and
+  `FitResult.evaluator` give the model as the data see it; MCMC keeps the
+  priors.
+- `grb_afterglow.mcmc.grid_posterior`: the posterior on a grid of one or two
+  difficult parameters, the rest marginalised in the Laplace approximation, for
+  posteriors that ensemble MCMC does not converge on. `sample_posterior` gains
+  `moves` and `spread_break`.
+- `plot_spectrum`: the broadband spectrum of a multi-instrument fit at one
+  time, as observed and with the Galactic dust removed, with residuals.
+- GRB 221009A: the spectral index from Liverpool, Lowell and Gemini photometry
+  from g to Ks (O'Connor et al. 2023), 0.66 ± 0.03 (stat) ± 0.13 (E(B−V)) ±
+  0.05 (photometric system), in agreement with O'Connor et al. (0.1σ) and
+  Laskar et al. (0.7σ). The near infrared shrinks the ambiguity of which
+  photometric system the published optical magnitudes are in from 0.46 vs 0.91
+  (griz alone) to 0.66 vs 0.76.
+
+### Changed
+- Least-squares fits use `scipy.optimize.least_squares` directly (results are
+  unchanged to 1e-9), so that priors can enter as extra residuals.
+- `power_law_color` integrates over filter curves where the registry has them.
+- Plots draw each band's model through its filter curve and calibration
+  offset; bands are ordered by wavelength.
+
+### Fixed
+- The Liverpool IO:O r-band curve is an energy-counter response (SVO); 0.4.0
+  treated it as photon counting, which put its pivot at 618.5 instead of
+  616.2 nm.
+- GRB 210204A: the 0.4.0 posterior came from an MCMC chain that had not
+  converged. The posterior is bimodal (a break between 1 and 2 days, or right
+  after the only early epoch with the early decay unconstrained) and is now
+  integrated on a grid: t_b = 0.95 ± 0.88 d (was 1.3 +0.7 −0.8 d),
+  alpha2 = 1.28 +0.47 −0.16 (was 1.44 +0.43 −0.26).
+
 ## [0.4.0] - 2026-10-10
 
 The remaining roadmap items: colour terms, dust extinction, Bayesian

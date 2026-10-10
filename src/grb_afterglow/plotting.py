@@ -23,6 +23,7 @@ from matplotlib.patches import Circle
 from matplotlib.ticker import FixedLocator, FormatStrFormatter, FuncFormatter, LogLocator, NullFormatter, NullLocator
 
 from .closure import CLOSURE_RELATIONS
+from .filters import band_wavelength_nm
 from .fitting import FitResult, band_frequency_hz
 from .lightcurve import AB_ZEROPOINT_UJY, SECONDS_PER_DAY, LightCurve
 
@@ -162,10 +163,21 @@ def _mag_to_flux(m):
     return AB_ZEROPOINT_UJY * 10 ** (-0.4 * np.asarray(m))
 
 
+def band_model(fit: FitResult, t, band: str, wavelengths_nm: dict[str, float] | None = None) -> np.ndarray:
+    """A fit's model of measurements in ``band``: through its filter curve and calibration offset, if any."""
+    if fit.spectral is not None or fit.nu_ref is None:
+        return fit.predict_band(t, band)
+    return fit.predict(t, np.full(np.shape(t), band_frequency_hz(band, wavelengths_nm)))
+
+
 def _sorted_bands(lc: LightCurve) -> list[str]:
+    """Bands in order of wavelength (unknown bands last, in order of appearance)."""
+
     def key(b):
-        short = str(b)[-1:]
-        return BAND_ORDER.index(short) if short in BAND_ORDER else len(BAND_ORDER)
+        try:
+            return band_wavelength_nm(str(b))
+        except KeyError:
+            return np.inf
 
     return sorted(lc.bands, key=key)
 
@@ -257,12 +269,10 @@ def plot_lightcurve(
                 ax.scatter(d[~det], lim, marker="v", s=46, facecolor="none", edgecolor=color, lw=1.2, zorder=4)
             label = (band_labels or {}).get(band, str(band))
             if fit is not None:
-                nu = band_frequency_hz(band, wavelengths_nm) if fit.nu_ref else None
-                model = fit.predict(model_days * SECONDS_PER_DAY, nu)
+                model = band_model(fit, model_days * SECONDS_PER_DAY, band, wavelengths_nm)
                 ax.plot(model_days, model, color=color, lw=1.8, alpha=0.9, zorder=3)
                 if rax is not None:
-                    nu_pts = nu if nu is None else np.full(len(sub), nu)
-                    resid = (sub.flux - fit.predict(sub.time, nu_pts)) / sub.flux_err
+                    resid = (sub.flux - band_model(fit, sub.time, band, wavelengths_nm)) / sub.flux_err
                     rax.scatter(d, resid, marker=marker, s=26, color=color, edgecolor=t.surface, lw=0.6, zorder=4)
             handles.append(
                 Line2D([], [], color=color, marker=marker, ms=6.5, mec=t.surface, lw=1.8 if fit else 0, label=label)
@@ -302,11 +312,9 @@ def plot_lightcurve(
             )
 
         if alternative is not None:
-            ref_band = bands[0]
-            nu = band_frequency_hz(ref_band, wavelengths_nm) if alternative.nu_ref else None
             ax.plot(
                 grid_days,
-                alternative.predict(grid_days * SECONDS_PER_DAY, nu),
+                band_model(alternative, grid_days * SECONDS_PER_DAY, bands[0], wavelengths_nm),
                 color=t.muted,
                 lw=1.3,
                 ls=(0, (5, 3)),
@@ -957,7 +965,6 @@ def plot_sed(
     variance weights. The corrected SED is drawn with the fitted power law
     ``F ∝ nu^-beta``; the observed one shows how much the dust reddened it.
     """
-    from .extinction import band_wavelength_nm
 
     t_ref = t_ref_days * SECONDS_PER_DAY
 
@@ -1023,3 +1030,154 @@ def plot_sed(
             ax.text(0, 1.02, subtitle, transform=ax.transAxes, fontsize=9.5, color=t.ink_secondary, va="bottom")
         _save(fig, savepath)
         return fig, ax
+
+
+def plot_spectrum(
+    lc: LightCurve,
+    fit: FitResult,
+    t_ref_days: float,
+    *,
+    group_labels: dict[str, str] | None = None,
+    fit_label: str | None = None,
+    title: str | None = None,
+    subtitle: str | None = None,
+    theme: str = "light",
+    figsize: tuple[float, float] = (7.4, 5.8),
+    savepath: str | PathLike[str] | None = None,
+):
+    """Broadband spectrum at one time from a multi-band fit through filter curves.
+
+    Every measurement is moved to ``t_ref_days`` along the fitted temporal
+    model and corrected for its calibration offset; the points of each band are
+    averaged with inverse-variance weights and drawn at the band's pivot
+    wavelength, with a horizontal bar spanning the filter's half-maximum
+    width. Open markers are as observed; filled markers have the fit's Galactic
+    extinction removed, averaged over each filter for the fitted spectrum. The
+    lines are the fitted power law and the same model behind the dust. Below,
+    each measurement's residual from the model in magnitudes.
+
+    Parameters
+    ----------
+    lc
+        The light curve the fit was made to (bands named ``"instrument:filter"``
+        are grouped by instrument in the legend).
+    fit
+        A multi-band :class:`~grb_afterglow.fitting.FitResult` (it must carry a
+        spectral model, i.e. come from :func:`~grb_afterglow.fitting.fit_lightcurve`).
+    group_labels
+        Legend label per instrument (or band, for plain band names).
+    """
+    from dataclasses import replace
+
+    from .filters import instrument_of
+    from .fitting import offset_key
+
+    if fit.spectral is None or "beta" not in fit.params:
+        raise ValueError("plot_spectrum needs a multi-band fit with a spectral model.")
+    spectral = fit.spectral
+    beta, host_av = fit.params["beta"], fit.params.get("host_av", 0.0)
+    dust_free = replace(spectral, ebv_mw=0.0)
+    t_ref = t_ref_days * SECONDS_PER_DAY
+    scale_ref = fit.temporal(np.array([t_ref]))[0]
+    bands = _sorted_bands(lc)
+    groups = list(dict.fromkeys(instrument_of(b) or b for b in bands))
+    markers = ("o", "s", "D", "^", "v", "p", "h")
+
+    with themed(theme) as t:
+        fig, (ax, rax) = plt.subplots(
+            2, 1, figsize=figsize, sharex=True, gridspec_kw={"height_ratios": [3.2, 1], "hspace": 0.06}
+        )
+        lam_lo = min(spectral.grid(b).wavelength_nm.min() for b in bands) * 0.92
+        lam_hi = max(spectral.grid(b).wavelength_nm.max() for b in bands) * 1.06
+        lam = np.geomspace(lam_lo, lam_hi, 300)
+        nu = 299_792_458.0 / (lam * 1e-9)
+        intrinsic = scale_ref * dust_free.monochromatic(nu, beta, host_av)
+        observed = scale_ref * spectral.monochromatic(nu, beta, host_av)
+        ax.plot(lam, intrinsic, color=t.series[0], lw=1.7, zorder=2)
+        ax.plot(lam, observed, color=t.muted, lw=1.3, ls=(0, (5, 3)), zorder=2)
+        label = fit_label or rf"power law, $\beta$ = {beta:.2f} ± {fit.errors.get('beta', np.nan):.2f}"
+        handles = [
+            Line2D([], [], color=t.series[0], lw=1.7, label=label),
+            Line2D([], [], color=t.muted, lw=1.3, ls=(0, (5, 3)), label="the same behind the Galactic dust"),
+        ]
+        rax.axhline(0.0, color=t.muted, lw=0.9, zorder=1)
+
+        for band in bands:
+            group = instrument_of(band) or band
+            k = groups.index(group)
+            color, marker = t.series[k % len(t.series)], markers[k % len(markers)]
+            sub = lc.select(band)
+            grid = spectral.grid(band)
+            model = fit.predict_band(sub.time, band)
+            key = offset_key(band, fit.offsets)
+            scale = scale_ref / fit.temporal(sub.time) * 10 ** (0.4 * (fit.offsets[key] if key else 0.0))
+            w = 1.0 / (sub.flux_err * scale) ** 2
+            f_obs = np.sum(w * sub.flux * scale) / w.sum()
+            e_obs = w.sum() ** -0.5
+            attenuation = (
+                spectral.band_factors([band], beta, host_av)[0] / dust_free.band_factors([band], beta, host_av)[0]
+            )
+            x = grid.effective_nm
+            bp = spectral.bandpass_for(band)
+            xerr = None
+            if bp is not None:
+                half = bp.wavelength_nm[bp.transmission >= 0.5 * bp.transmission.max()]
+                xerr = [[x - half.min()], [half.max() - x]]
+            for f, filled in ((f_obs, False), (f_obs / attenuation, True)):
+                ax.errorbar(
+                    x,
+                    f,
+                    yerr=e_obs * f / f_obs,
+                    xerr=xerr,
+                    fmt=marker,
+                    ms=6.5,
+                    color=color,
+                    mec=color,
+                    mfc=color if filled else t.surface,
+                    elinewidth=1.0,
+                    capsize=0,
+                    zorder=4,
+                )
+            with np.errstate(divide="ignore", invalid="ignore"):
+                resid = -2.5 * np.log10(sub.flux / model)
+                resid_err = 2.5 / np.log(10) * sub.flux_err / sub.flux
+            rax.errorbar(
+                np.full(len(sub), x),
+                resid,
+                yerr=resid_err,
+                fmt=marker,
+                ms=4.5,
+                color=color,
+                mec=color,
+                mfc=t.surface,
+                elinewidth=0.9,
+                capsize=0,
+                alpha=0.85,
+                zorder=3,
+            )
+        for k, group in enumerate(groups):
+            color, marker = t.series[k % len(t.series)], markers[k % len(markers)]
+            handles.append(
+                Line2D([], [], color=color, marker=marker, lw=0, ms=6.5, label=(group_labels or {}).get(group, group))
+            )
+        handles.append(Line2D([], [], color=t.ink_secondary, marker="o", mfc=t.surface, lw=0, label="as observed"))
+        handles.append(Line2D([], [], color=t.ink_secondary, marker="o", lw=0, label="Galactic dust removed"))
+
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+        ax.set_ylabel(f"Flux density at {t_ref_days:g} d (µJy)")
+        rax.set_xlabel("Observed wavelength (nm)")
+        rax.set_ylabel("Data − model\n(mag)")
+        rax.invert_yaxis()
+        ticks = [x for x in (400, 500, 600, 800, 1000, 1200, 1600, 2000, 2400) if lam_lo <= x <= lam_hi]
+        rax.xaxis.set_major_locator(FixedLocator(ticks))
+        rax.xaxis.set_major_formatter(FormatStrFormatter("%d"))
+        rax.xaxis.set_minor_locator(NullLocator())
+        ax.set_xlim(lam_lo, lam_hi)
+        ax.legend(handles=handles, loc="lower right", fontsize=8.5, ncol=2)
+        if title:
+            ax.set_title(title, pad=22 if subtitle else 8)
+        if subtitle:
+            ax.text(0, 1.02, subtitle, transform=ax.transAxes, fontsize=9.5, color=t.ink_secondary, va="bottom")
+        _save(fig, savepath)
+        return fig, (ax, rax)

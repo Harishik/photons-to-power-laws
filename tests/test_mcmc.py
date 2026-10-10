@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from grb_afterglow import LightCurve, fit_lightcurve
-from grb_afterglow.mcmc import sample_posterior
+from grb_afterglow.mcmc import grid_posterior, sample_posterior
 
 
 @pytest.fixture(scope="module")
@@ -51,3 +51,21 @@ def test_single_band_single_power_law():
     post = sample_posterior(lc, fit, n_walkers=16, n_steps=1500, burn=500)
     assert post.interval("alpha")[0] == pytest.approx(1.3, abs=0.03)
     assert np.all(post["amplitude"] > 0)
+
+
+def test_grid_posterior_matches_least_squares_when_gaussian(jet_break):
+    lc, fit = jet_break
+    # Steps of about a third of the posterior width in both parameters.
+    grid = {"t_break": np.geomspace(6.5e4, 9e4, 41), "alpha1": np.linspace(0.86, 0.94, 41)}
+    post = grid_posterior(lc, fit, grid, n_samples=20000, seed=3)
+    assert post.names == list(fit.params) and np.isnan(post.acceptance_fraction)
+    for name in ("alpha1", "alpha2", "beta"):
+        med, lo, hi = post.interval(name)
+        assert med == pytest.approx(fit.params[name], abs=0.5 * fit.errors[name])
+        assert 0.5 * (hi - lo) == pytest.approx(fit.errors[name], rel=0.25)
+    assert post.interval("t_break_days")[0] * 86400 == pytest.approx(fit.params["t_break"], rel=0.1)
+    assert "grid" in post.summary()
+    one = grid_posterior(lc, fit, {"alpha2": np.linspace(1.8, 2.6, 81)}, n_samples=5000)
+    assert one.interval("alpha2")[0] == pytest.approx(fit.params["alpha2"], abs=0.3 * fit.errors["alpha2"])
+    with pytest.raises(ValueError):
+        grid_posterior(lc, fit, {"gamma": np.ones(3)})

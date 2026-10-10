@@ -23,13 +23,22 @@ wavelength itself must be that of the actual filter: a few nanometres matter.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from os import PathLike
-
 import numpy as np
 
-from .fitting import EFFECTIVE_WAVELENGTH_NM
+from .filters import Bandpass, band_wavelength_nm
 from .lightcurve import LightCurve
+
+__all__ = [
+    "PEI92_SMC_RV",
+    "Bandpass",
+    "band_extinction",
+    "band_wavelength_nm",
+    "ccm89",
+    "deredden",
+    "extinction_curve",
+    "pei92_smc",
+    "power_law_color",
+]
 
 # Pei (1992), Table 4: SMC terms (a_i, lambda_i [um], b_i, n_i) of xi = A_lambda / A_B.
 _PEI92_SMC = np.array(
@@ -90,46 +99,6 @@ def pei92_smc(wavelength_nm) -> np.ndarray:
     xi = np.sum(a / (ratio + 1.0 / ratio + b), axis=0)  # A_lambda / A_B
     out = xi * (1.0 + PEI92_SMC_RV) / PEI92_SMC_RV  # A_B / A_V = (R_V + 1) / R_V
     return out if np.ndim(wavelength_nm) else out[0]
-
-
-@dataclass(frozen=True)
-class Bandpass:
-    """A filter's system transmission curve (filter, optics and detector)."""
-
-    name: str
-    wavelength_nm: np.ndarray
-    transmission: np.ndarray
-
-    @classmethod
-    def from_file(cls, path: str | PathLike[str], name: str, *, unit_nm: float = 0.1) -> Bandpass:
-        """Read two columns, wavelength and transmission (SVO Filter Profile Service format, in Angstrom)."""
-        lam, trans = np.loadtxt(path, unpack=True, comments="#")
-        return cls(name, np.asarray(lam, float) * unit_nm, np.clip(np.asarray(trans, float), 0.0, None))
-
-    @property
-    def pivot_nm(self) -> float:
-        """Pivot wavelength ``sqrt(int T lam dlam / int T / lam dlam)``: where ``F_nu`` and ``F_lambda`` agree."""
-        lam, t = self.wavelength_nm, self.transmission
-        return float(np.sqrt(np.trapezoid(t * lam, lam) / np.trapezoid(t / lam, lam)))
-
-    def mean_attenuation(self, extinction_mag: np.ndarray, beta: float = 0.5) -> float:
-        """Band-averaged extinction (mag) of a source ``F_nu ∝ nu^-beta`` for extinction ``A(lambda)``.
-
-        Photon-counting weights: ``A = -2.5 log10(int T F_nu 10^(-0.4 A) dlam/lam / int T F_nu dlam/lam)``.
-        """
-        lam = self.wavelength_nm
-        w = self.transmission * lam ** (beta - 1.0)  # F_nu ∝ lam^beta, times dlam / lam
-        ratio = np.trapezoid(w * 10 ** (-0.4 * np.asarray(extinction_mag, float)), lam) / np.trapezoid(w, lam)
-        return float(-2.5 * np.log10(ratio))
-
-
-def band_wavelength_nm(band: str, wavelengths_nm: dict[str, float] | None = None) -> float:
-    """Effective wavelength of a band (Pan-STARRS1 defaults; ``"zr"`` falls back to ``"r"``)."""
-    table = wavelengths_nm or EFFECTIVE_WAVELENGTH_NM
-    key = band if band in table else band[-1:]
-    if key not in table:
-        raise KeyError(f"No effective wavelength known for band {band!r}.")
-    return float(table[key])
 
 
 def extinction_curve(
@@ -212,11 +181,16 @@ def power_law_color(
 ) -> float:
     """Observed AB colour ``m_blue - m_red`` of a power-law spectrum ``F ∝ nu^-beta`` behind dust.
 
-    Useful as the ``target_color`` of a colour-term zero point: an afterglow
-    seen through several magnitudes of Galactic dust is much redder than the
-    field stars that calibrate it.
+    Bands with a transmission curve in the registry (e.g. ``"ps1:g"``) are
+    integrated over it, which matters behind several magnitudes of dust; other
+    bands are evaluated at their effective wavelength. Useful as the
+    ``target_color`` of a colour-term zero point: an afterglow seen through
+    heavy Galactic dust is much redder than the field stars that calibrate it.
     """
-    lam_b, lam_r = band_wavelength_nm(blue, wavelengths_nm), band_wavelength_nm(red, wavelengths_nm)
-    intrinsic = 2.5 * beta * np.log10(lam_r / lam_b)  # nu_b / nu_r = lam_r / lam_b
-    kwargs = {"ebv_mw": ebv_mw, "r_v": r_v, "host_av": host_av, "redshift": redshift, "wavelengths_nm": wavelengths_nm}
-    return float(intrinsic + band_extinction(blue, **kwargs) - band_extinction(red, **kwargs))
+    from .spectral import SpectralModel
+
+    model = SpectralModel.for_reference_band(
+        red, ebv_mw=ebv_mw, r_v=r_v, redshift=redshift, wavelengths_nm=wavelengths_nm
+    )
+    f_blue, f_red = model.band_factors([blue, red], beta, host_av)
+    return float(-2.5 * np.log10(f_blue / f_red))

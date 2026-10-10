@@ -10,7 +10,8 @@ and kept observing the field in g, r and i for a month. The script
    afterglow on the difference images with PSF photometry;
 3. removes the (small) Galactic extinction and fits a smoothly broken power
    law jointly to g, r and i before the late flares, with a shared spectral
-   index, then samples the posterior with MCMC;
+   index, then computes the posterior on a grid of break time and early decay
+   index (with a single epoch before the break, MCMC does not converge);
 4. compares the break, the decay and the late flaring with Kumar et al.
    (2022), whose light curve combines ZTF with several other telescopes.
 
@@ -21,7 +22,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import logging
 import warnings
 from pathlib import Path
 
@@ -40,11 +40,9 @@ from grb_afterglow import LightCurve, PipelineConfig, compare_models, evaluate_c
 from grb_afterglow.calibration import load_fits
 from grb_afterglow.extinction import deredden, power_law_color
 from grb_afterglow.lightcurve import SECONDS_PER_DAY
-from grb_afterglow.mcmc import sample_posterior
+from grb_afterglow.mcmc import grid_posterior
 from grb_afterglow.pipeline import FrameResult, Template, header_time_since_trigger, reduce_frame
 from grb_afterglow.plotting import plot_filmstrip, plot_lightcurve, plot_posterior, plot_subtraction
-
-logging.getLogger("emcee").setLevel(logging.ERROR)
 
 HERE = Path(__file__).resolve().parent
 TARGET = SkyCoord(117.08054 * u.deg, 11.40949 * u.deg)  # ZTF21aagwbjr, GCN Circular 29405
@@ -105,6 +103,23 @@ def fit_early(lc: LightCurve):
     early = corrected.subset(corrected.time_days <= FIT_TMAX_DAYS)
     kwargs = {"reference_band": "zr", "wavelengths_nm": ZTF_WAVELENGTHS_NM, "sys_err": 0.02}
     return corrected, early, fit_lightcurve(early, "single", **kwargs), fit_lightcurve(early, "broken", **kwargs)
+
+
+def break_posterior(early: LightCurve, broken):
+    """Posterior of the jet-break fit, integrated on a grid of break time and early decay index.
+
+    The survey saw the afterglow once (0.6 h) before it next visited at 0.94 d. A break between the two leaves
+    the early decay index constrained by a single point, so the posterior has a long, thin tail towards early
+    breaks whose weight is set by the prior range of alpha1. Ensemble MCMC explores it very slowly (its
+    autocorrelation time keeps growing with chain length); a grid integrates it exactly. The alpha1 grid is
+    refined around the best fit, where the posterior is narrow; a grid twice as fine gives the same intervals.
+    """
+    t = early.time[early.time > 0]
+    a1 = broken.params["alpha1"]
+    coarse, fine = np.arange(-3.0, 6.0 + 1e-9, 0.1), np.arange(a1 - 0.5, a1 + 0.5, 0.01)
+    alpha1 = np.unique(np.round(np.concatenate([coarse, fine]), 6))
+    grid = {"t_break": np.geomspace(t.min(), t.max(), 60), "alpha1": alpha1}
+    return grid_posterior(early, broken, grid, sys_err=0.02, seed=1), {k: int(v.size) for k, v in grid.items()}
 
 
 def main() -> int:
@@ -183,9 +198,7 @@ def main() -> int:
 
     corrected, early, single, broken = fit_early(lc)
     print(compare_models(single, broken).summary())
-    posterior = sample_posterior(
-        early, broken, sys_err=0.02, wavelengths_nm=ZTF_WAVELENGTHS_NM, n_steps=6000, burn=2000, seed=1
-    )
+    posterior, grid_size = break_posterior(early, broken)
     print(posterior.summary())
     a2, beta = posterior.interval("alpha2"), posterior.interval("beta")
     tb = posterior.interval("t_break_days")
@@ -223,6 +236,12 @@ def main() -> int:
         "posterior": {
             name: dict(zip(("median", "lower_68", "upper_68"), posterior.interval(name), strict=True))
             for name in ("t_break_days", "alpha1", "alpha2", "beta")
+        },
+        "prob_t_break_before_half_day": float(np.mean(posterior["t_break_days"] < 0.5)),
+        "posterior_method": {
+            "grid": grid_size,
+            "note": "grid over t_break (log-uniform prior) and alpha1 (uniform in [-3, 6]); amplitude, alpha2 and "
+            "beta marginalised in the Laplace approximation (grid_posterior)",
         },
         "closure_after_break": [
             {"relation": c.relation.label, "p": c.p, "p_err": c.p_err, "n_sigma": c.n_sigma} for c in closure[:3]

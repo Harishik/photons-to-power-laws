@@ -208,8 +208,39 @@ broad band. And the wavelength must be the actual filter's: for GRB 221009A
 wavelengths moves the g-band pivot by 13 nm and overcorrects g by 0.18 mag
 (i by 0.09), which lowers `β` by 0.08; evaluating the extinction at the pivot
 instead of averaging over the filter lowers it by another 0.08. Even done
-properly, `β` is then dominated by the uncertainty of the dust: ±0.06 in
-`E(B − V)` moves it by ±0.18, three times its statistical error.
+properly, `β` from optical bands alone is dominated by the uncertainty of the
+dust: ±0.06 in `E(B − V)` moves `β` from Liverpool's griz by ±0.18.
+
+## Several instruments, one spectrum
+
+Photometry from different telescopes raises two problems when it goes into one
+fit. The first is bandpasses. Every instrument's "r" is a different band, and
+behind heavy dust the difference is large. The package therefore does not
+deredden each band by one number. It applies the dust to the model spectrum
+and integrates that through each instrument's own transmission curve:
+
+```text
+F_band = ∫ T(λ) F_ν(λ) 10^(−0.4 A(λ)) dλ/λ / ∫ T(λ) dλ/λ
+```
+
+This is synthetic photometry of the model. The curves come from the SVO
+Filter Profile Service (Rodrigo et al. 2012, 2020, 2024), converted to photon
+counting where SVO gives an energy response.
+
+The second problem is zero points. Each data set is calibrated against a
+catalogue, Pan-STARRS1 in the optical and 2MASS in the near infrared, usually
+without colour terms. The fit gives each instrument, or each band, a
+zero-point offset with a Gaussian prior as wide as the expected calibration
+error, anchored to a reference band.
+
+Without colour terms, catalogue-calibrated magnitudes are in the instrument's
+own system, up to a grey offset set by the colours of the calibration stars.
+They are not in the catalogue's system. For a source as red as GRB 221009A the
+distinction is not academic: read either way, Liverpool's griz give `β` = 0.46
+or 0.91. Near-infrared bands, where the dust is weak, fix the slope over a
+factor of four in wavelength and shrink that ambiguity to 0.66 against 0.76.
+They help less with the dust itself: E(B − V) ± 0.06 still moves `β` by ±0.13,
+compared with ±0.18 for griz alone.
 
 ## Bayesian posteriors
 
@@ -222,9 +253,21 @@ ensemble sampler of Goodman & Weare (2010) (`emcee`, Foreman-Mackey et al.
 2013), using the same flux-space likelihood and flat priors (in the logarithm
 for the amplitude and the break time). Derived quantities such as `p` follow
 sample by sample. For the synthetic demo, where the data constrain everything
-well, posterior and least squares agree; for GRB 210204A, with one ZTF epoch
-before the break, the posterior of the break time and the late decay is
-clearly asymmetric.
+well, posterior and least squares agree.
+
+Samplers have limits. For GRB 210204A, with one ZTF epoch before the break,
+the posterior has two modes:
+
+- a break between 1 and 2 days;
+- a break right after that epoch, where the early decay index is
+  unconstrained and the posterior narrows into a long funnel.
+
+The ensemble sampler's autocorrelation time keeps growing with the chain
+length, the sign that it has not converged. There, `grid_posterior`
+integrates the two difficult parameters on a grid, which is exact for them
+whatever the shape of the posterior. The well-constrained rest are integrated
+in the Laplace approximation, as Gaussians around their best fit at each grid
+point, and samples are drawn from the result.
 
 ## References
 
@@ -250,5 +293,8 @@ clearly asymmetric.
 - Kumar et al. 2022, MNRAS, arXiv:2204.07587: the afterglow and late flares of GRB 210204A.
 - Bellm et al. 2019, PASP 131, 018002; Masci et al. 2019, PASP 131, 018003:
   the Zwicky Transient Facility and its data system.
-- Laskar et al. 2023, ApJL, [doi:10.3847/2041-8213/acbfad](https://doi.org/10.3847/2041-8213/acbfad):
+- Laskar et al. 2023, ApJL 946, L23, [doi:10.3847/2041-8213/acbfad](https://doi.org/10.3847/2041-8213/acbfad):
   the radio to GeV afterglow of GRB 221009A.
+- Fulton et al. 2023, arXiv:2301.11170: a possible supernova in GRB 221009A at about 20 days.
+- Rodrigo, Solano & Bayo 2012, IVOA Working Draft; Rodrigo & Solano 2020, XIV.0 Scientific
+  Meeting of the SEA; Rodrigo et al. 2024, A&A 689, A93: the SVO Filter Profile Service.

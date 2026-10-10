@@ -1,0 +1,39 @@
+# Filter curves from the SVO Filter Profile Service, retrieved 2026-10-10.
+# Wavelengths in Angstrom; transmission as given by SVO (system throughput where available).
+# This research has made use of the SVO Filter Profile Service "Carlos Rodrigo", funded by MCIN/AEI/10.13039/501100011033/ through grant PID2023-146210NB-I00 (Rodrigo et al. 2012, 2020, 2024).
+name,svo_id,file,detector,svo_pivot_nm,note
+ztf:g,Palomar/ZTF.g,Palomar__ZTF.g.dat,photon,478.35,ZTF system throughput
+ztf:r,Palomar/ZTF.r,Palomar__ZTF.r.dat,photon,641.71,ZTF system throughput
+ztf:i,Palomar/ZTF.i,Palomar__ZTF.i.dat,photon,786.74,ZTF system throughput
+ps1:g,PAN-STARRS/PS1.g,PAN-STARRS__PS1.g.dat,photon,484.91,Pan-STARRS1 system (Tonry et al. 2012)
+ps1:r,PAN-STARRS/PS1.r,PAN-STARRS__PS1.r.dat,photon,620.12,Pan-STARRS1 system (Tonry et al. 2012)
+ps1:i,PAN-STARRS/PS1.i,PAN-STARRS__PS1.i.dat,photon,753.50,Pan-STARRS1 system (Tonry et al. 2012)
+ps1:z,PAN-STARRS/PS1.z,PAN-STARRS__PS1.z.dat,photon,867.42,Pan-STARRS1 system (Tonry et al. 2012)
+ps1:y,PAN-STARRS/PS1.y,PAN-STARRS__PS1.y.dat,photon,962.78,Pan-STARRS1 system (Tonry et al. 2012)
+sdss:u,SLOAN/SDSS.u,SLOAN__SDSS.u.dat,photon,355.65,SDSS 2.5 m system
+sdss:g,SLOAN/SDSS.g,SLOAN__SDSS.g.dat,photon,470.25,SDSS 2.5 m system
+sdss:r,SLOAN/SDSS.r,SLOAN__SDSS.r.dat,photon,617.56,SDSS 2.5 m system
+sdss:i,SLOAN/SDSS.i,SLOAN__SDSS.i.dat,photon,749.00,SDSS 2.5 m system
+sdss:z,SLOAN/SDSS.z,SLOAN__SDSS.z.dat,photon,894.67,SDSS 2.5 m system
+lt:g,Liverpool/IOO.SDSS-g,Liverpool__IOO.SDSS-g.dat,photon,483.49,Liverpool Telescope IO:O system
+lt:r,Liverpool/IOO.SDSS-r,Liverpool__IOO.SDSS-r.dat,energy,616.17,Liverpool Telescope IO:O system
+lt:i,Liverpool/IOO.SDSS-i,Liverpool__IOO.SDSS-i.dat,photon,762.58,Liverpool Telescope IO:O system
+lt:z,Liverpool/IOO.SDSS-z,Liverpool__IOO.SDSS-z.dat,photon,898.81,Liverpool Telescope IO:O system
+gmos-s:g,Gemini/GMOS-S.g,Gemini__GMOS-S.g.dat,energy,468.23,Gemini South GMOS-S
+gmos-s:r,Gemini/GMOS-S.r,Gemini__GMOS-S.r.dat,energy,628.92,Gemini South GMOS-S
+gmos-s:i,Gemini/GMOS-S.i,Gemini__GMOS-S.i.dat,energy,775.76,Gemini South GMOS-S
+gmos-s:z,Gemini/GMOS-S.z,Gemini__GMOS-S.z.dat,energy,919.31,Gemini South GMOS-S
+f2:J,Gemini/Flamingos2.J,Gemini__Flamingos2.J.dat,photon,1254.22,Gemini South Flamingos-2
+f2:H,Gemini/Flamingos2.H,Gemini__Flamingos2.H.dat,photon,1628.35,Gemini South Flamingos-2
+f2:Ks,Gemini/Flamingos2.Ks,Gemini__Flamingos2.Ks.dat,photon,2155.22,Gemini South Flamingos-2
+wirc:J,P200/WIRC.J_ori,P200__WIRC.J_ori.dat,energy,1244.33,Palomar 200-inch WIRC (original filter data)
+wirc:H,P200/WIRC.H_ori,P200__WIRC.H_ori.dat,energy,1625.06,Palomar 200-inch WIRC (original filter data)
+wirc:Ks,P200/WIRC.Ks,P200__WIRC.Ks.dat,energy,2139.25,Palomar 200-inch WIRC
+2mass:J,2MASS/2MASS.J,2MASS__2MASS.J.dat,photon,1239.31,2MASS (Cohen et al. 2003)
+2mass:H,2MASS/2MASS.H,2MASS__2MASS.H.dat,photon,1649.49,2MASS (Cohen et al. 2003)
+2mass:Ks,2MASS/2MASS.Ks,2MASS__2MASS.Ks.dat,photon,2163.86,2MASS (Cohen et al. 2003)
+wfc3:F625W,HST/WFC3_UVIS2.F625W,HST__WFC3_UVIS2.F625W.dat,photon,624.20,HST WFC3/UVIS chip 2
+wfc3:F775W,HST/WFC3_UVIS2.F775W,HST__WFC3_UVIS2.F775W.dat,photon,764.83,HST WFC3/UVIS chip 2
+wfc3:F098M,HST/WFC3_IR.F098M,HST__WFC3_IR.F098M.dat,photon,986.27,HST WFC3/IR
+wfc3:F125W,HST/WFC3_IR.F125W,HST__WFC3_IR.F125W.dat,photon,1248.61,HST WFC3/IR
+wfc3:F160W,HST/WFC3_IR.F160W,HST__WFC3_IR.F160W.dat,photon,1537.03,HST WFC3/IR

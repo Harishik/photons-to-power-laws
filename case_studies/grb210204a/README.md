@@ -31,7 +31,9 @@ python case_studies/grb210204a/fetch_data.py   # optional: rebuild data/ from IR
 3. The light curve is corrected for the Galactic extinction (Schlafly &
    Finkbeiner 2011, CCM89 curve) and a smoothly broken power law with a common
    spectral index is fitted jointly to g, r and i before 7 days, where the late
-   flares begin. The posterior is sampled with MCMC (`grb_afterglow.mcmc`).
+   flares begin. The posterior is integrated on a grid of break time and early
+   decay index (`grb_afterglow.mcmc.grid_posterior`; see below for why not
+   MCMC).
 
 ## Results
 
@@ -49,23 +51,47 @@ The afterglow is detected above 3σ in 12 frames, from 0.6 hours to 5 days.
 The discovery image gives r = 17.15 ± 0.03 (502 ± 15 µJy), in agreement with
 the r = 17.11 of the discovery circular.
 
-| | This pipeline (ZTF only, MCMC posterior, 68 %) | Kumar et al. (2022) |
+| | This pipeline (ZTF only, posterior median and 68 %) | Kumar et al. (2022) |
 |---|---:|---:|
 | Preferred model | broken power law (ΔBIC = 83 over a single one) | jet break |
-| Early decay, alpha1 | 0.53 +0.03 −0.13 | ≈ 0.33 |
-| Break time | 1.3 +0.7 −0.8 d | 0.37 ± 0.30 d |
-| Late decay, alpha2 | 1.44 +0.43 −0.26 | 1.18 ± 0.03 |
-| Spectral index, beta | 0.92 ± 0.19 | ≈ 0.75 (optical to X-ray) |
-| Closure relation after the break | ISM, ν_m < ν < ν_c, p = 2.84 ± 0.38 (0.1σ) | ISM, p ≈ 2.5 |
+| Early decay, alpha1 | 0.50 +0.05 −1.47 | ≈ 0.33 |
+| Break time | 0.95 ± 0.88 d (two modes, below) | 0.37 ± 0.30 d |
+| Late decay, alpha2 | 1.28 +0.47 −0.16 | 1.18 ± 0.03 |
+| Spectral index, beta | 0.93 ± 0.19 | ≈ 0.75 (optical to X-ray) |
+| Closure relation after the break | ISM, ν_m < ν < ν_c, p = 2.86 ± 0.38 (0.3σ) | ISM, p ≈ 2.5 |
 
-The posterior is markedly asymmetric (least squares quotes t_b = 1.46 ± 0.45 d
-and alpha2 = 1.51 ± 0.27): with only one epoch before the break, the break time
-and the late slope trade off against each other, which the corner plot shows
-directly. Every quantity agrees with Kumar et al. within about 1σ; their
-light curve combines ZTF with several other telescopes and constrains the late
-decay far better. The spectral index from ZTF's three bands and the closure
-relations independently point to the same constant-density medium and
-electron index that Kumar et al. infer from the optical and X-ray data.
+The survey saw the afterglow once, at 0.6 hours, and then not until
+0.94 days. That leaves two ways to place the break, and the posterior has a
+mode for each:
+
+- **A break between 1 and 2 days**, with an early decay of 0.50 set by the
+  first point. This is the least-squares solution: t_b = 1.46 ± 0.45 d,
+  alpha2 = 1.51 ± 0.27.
+- **A break right after the first point.** Everything after it is then a
+  single power law with alpha ≈ 1.2, and the first point says nothing about
+  the early decay, which can take any value its prior allows. This mode holds
+  40 % of the probability (break before 0.5 d). How much depends on the prior
+  range of alpha1, uniform from −3 to 6 here: the data alone cannot choose
+  between the two.
+
+Kumar et al.'s break at 0.37 d, from denser data, lies between the modes. The
+late decay, spectral index and electron index agree with theirs within 1σ. Their light curve combines ZTF with several other telescopes and
+constrains the late decay far better. The spectral index from ZTF's three
+bands and the closure relations independently point to the same
+constant-density medium and electron index that Kumar et al. infer from the
+optical and X-ray data.
+
+**Why a grid, not MCMC.** An ensemble MCMC sampler mixes badly on this
+posterior: the early-break mode is a long, thin funnel. Its autocorrelation
+time grew with the length of the chain, from about 200 steps in a 6,000-step
+chain to about 2,000 in a 30,000-step one. Version 0.4 of this case study
+quoted t_b = 1.3 +0.7 −0.8 d from such an unconverged chain. The posterior is
+therefore integrated on a grid instead:
+
+- the grid covers break time and early decay index;
+- amplitude, late decay and spectral index are integrated as Gaussians at
+  each grid point;
+- the result is unchanged on a grid twice as fine.
 
 <p align="center">
 <picture>
@@ -91,7 +117,7 @@ and every number above in [`results/summary.json`](results/summary.json).
 
 - **One epoch before the break.** The ZTF survey visited the field 0.6 hours
   after the burst and then not until 0.94 days, so the break time and the early
-  slope rest on a single point.
+  slope rest on a single point and their posterior depends on the priors.
 - **Survey depth.** After about 5 days the afterglow falls below the depth of
   30 s ZTF exposures; around the full moon at 21 to 25 days the frames are almost
   two magnitudes shallower and have few calibration stars.

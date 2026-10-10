@@ -1,0 +1,54 @@
+# Optical and near-infrared photometry of GRB 221009A from Lowell (LDT/LMI), Gemini South (GMOS-S, Flamingos-2),
+# Palomar (P200/WIRC) and HST (WFC3).
+# Source: O'Connor et al. (2023), "A structured jet explains the extreme GRB 221009A", Science Advances 9, eadi1405,
+#         doi:10.1126/sciadv.adi1405. Values transcribed from the table "Log of optical and infrared observations"
+#         in the supplementary material of arXiv:2302.07906 (LaTeX source), all 45 rows.
+# time_days: since the Fermi/GBM trigger (2022-10-09 13:16:59 UT). mag: AB, not corrected for Galactic extinction.
+# LMI and GMOS-S photometry is calibrated to Pan-STARRS1; Flamingos-2 and WIRC to 2MASS (converted from Vega to AB).
+# band: the filter curve used to model the measurement (see analyze.py; LMI uses the SDSS curves as a proxy).
+time_days,telescope,instrument,filter,band,exposure_s,mag,mag_err
+3.6,LDT,LMI,g,lmi:g,1050,22.06,0.04
+3.6,LDT,LMI,r,lmi:r,600,20.44,0.04
+3.6,LDT,LMI,i,lmi:i,400,19.37,0.01
+3.6,LDT,LMI,z,lmi:z,300,18.67,0.01
+4.4,Gemini,GMOS-S,i,gmos-s:i,420,19.78,0.02
+4.4,Gemini,F2,J,f2:J,60,17.93,0.03
+4.4,Gemini,F2,H,f2:H,60,17.23,0.03
+4.4,Gemini,F2,Ks,f2:Ks,60,16.69,0.02
+9.5,LDT,LMI,r,lmi:r,600,21.85,0.08
+9.5,LDT,LMI,i,lmi:i,450,20.75,0.05
+9.5,LDT,LMI,z,lmi:z,300,20.01,0.03
+17.4,Gemini,GMOS-S,i,gmos-s:i,420,21.71,0.05
+17.4,Gemini,F2,J,f2:J,75,20.10,0.10
+17.4,Gemini,F2,H,f2:H,75,19.43,0.15
+17.4,Gemini,F2,Ks,f2:Ks,75,18.94,0.08
+18.5,LDT,LMI,g,lmi:g,2400,24.71,0.15
+18.5,LDT,LMI,r,lmi:r,600,22.71,0.06
+18.5,LDT,LMI,i,lmi:i,450,21.83,0.15
+18.5,LDT,LMI,z,lmi:z,300,20.97,0.05
+21.5,LDT,LMI,r,lmi:r,1350,22.91,0.06
+21.5,LDT,LMI,i,lmi:i,1200,21.88,0.05
+21.5,LDT,LMI,z,lmi:z,700,21.37,0.04
+24.2,P200,WIRC,J,wirc:J,495,20.6,0.2
+24.2,P200,WIRC,H,wirc:H,330,19.84,0.15
+24.2,P200,WIRC,Ks,wirc:Ks,330,19.48,0.15
+25.4,Gemini,F2,H,f2:H,245,19.95,0.07
+25.4,Gemini,F2,Ks,f2:Ks,225,19.54,0.07
+28.5,LDT,LMI,r,lmi:r,1200,23.55,0.15
+28.5,LDT,LMI,i,lmi:i,1050,22.07,0.09
+28.5,LDT,LMI,z,lmi:z,1000,21.45,0.07
+29.7,HST,WFC3/UVIS,F625W,wfc3:F625W,960,23.62,0.05
+29.7,HST,WFC3/UVIS,F775W,wfc3:F775W,750,22.41,0.04
+29.8,HST,WFC3/IR,F098M,wfc3:F098M,898,21.24,0.01
+29.8,HST,WFC3/IR,F125W,wfc3:F125W,798,20.65,0.01
+29.8,HST,WFC3/IR,F160W,wfc3:F160W,798,20.39,0.01
+36.5,LDT,LMI,r,lmi:r,450,23.64,0.11
+36.5,LDT,LMI,i,lmi:i,450,22.45,0.05
+36.5,LDT,LMI,z,lmi:z,200,21.82,0.07
+40.6,HST,WFC3/UVIS,F625W,wfc3:F625W,960,23.92,0.06
+40.6,HST,WFC3/UVIS,F775W,wfc3:F775W,750,22.76,0.04
+52.5,LDT,LMI,i,lmi:i,1200,22.91,0.18
+55.7,HST,WFC3/UVIS,F625W,wfc3:F625W,3775,24.38,0.05
+56.3,HST,WFC3/IR,F098M,wfc3:F098M,898,22.09,0.02
+56.3,HST,WFC3/IR,F125W,wfc3:F125W,698,21.52,0.02
+56.3,HST,WFC3/IR,F160W,wfc3:F160W,698,21.22,0.02

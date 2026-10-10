@@ -12,9 +12,9 @@ from matplotlib.animation import FuncAnimation, PillowWriter
 from matplotlib.lines import Line2D
 from matplotlib.patches import Circle
 
-from .fitting import FitResult, band_frequency_hz
+from .fitting import FitResult
 from .lightcurve import SECONDS_PER_DAY, LightCurve
-from .plotting import _sorted_bands, band_style, format_log_time_axis, themed
+from .plotting import _sorted_bands, band_model, band_style, format_log_time_axis, themed
 
 
 def animate_afterglow(
@@ -104,8 +104,7 @@ def animate_afterglow(
                 shown = sub.time_days <= now * (1 + 1e-9)
                 pts.set_data(sub.time_days[shown], np.clip(sub.flux[shown], pos.min() / 4, None))
                 if fit is not None and frame >= len(step_times):
-                    nu = band_frequency_hz(band) if fit.nu_ref else None
-                    model.set_data(grid, fit.predict(grid * SECONDS_PER_DAY, nu))
+                    model.set_data(grid, band_model(fit, grid * SECONDS_PER_DAY, band))
                     model.set_alpha(min(1.0, 0.25 * (frame - len(step_times) + 1)))
             if fit is not None and frame >= len(step_times) and "alpha1" in fit.params:
                 p = fit.params

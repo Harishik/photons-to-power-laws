@@ -111,23 +111,31 @@ after inspection because a satellite trail crosses the aperture.
 | Decay index from ZTF + Liverpool Telescope | 1.40 ± 0.02 |
 | Published r′ decay after 0.4 d (Laskar et al. 2023) | 1.42 ± 0.01 |
 | ZTF − Liverpool at the first three detections | −0.03, +0.11, −0.19 mag |
-| Spectral index from Liverpool griz, Galactic dust removed (t ≥ 1.7 d) | 0.41 ± 0.06 (stat) ± 0.18 (dust) |
+| Spectral index, optical + near-infrared from five instruments (1.7 to 20 d) | 0.66 ± 0.03 (stat) ± 0.13 (dust) ± 0.05 (system) |
 | Published optical/IR spectral index (O'Connor et al. 2023) | 0.68 ± 0.05 |
 
 Difference imaging with PSF photometry raises the signal-to-noise of each
 detection by a factor of 1.4 to 1.9 over the v0.2 measurement and shrinks the
 error on the ZTF-only decay index by 40 %. Both agree with the published value.
-Behind `E(B−V) = 1.32` the observed spectrum is absurdly red (beta = 4.35);
-averaged over the actual Liverpool filter curves, the dust correction gives a
-spectral index within 1.4σ of the published one, with an error dominated by
-the uncertainty of the dust itself. The ZTF zero points use a colour term
-measured once from all frames, because the afterglow is far redder than the
-calibration stars.
+The Galactic dust removes 4.7 magnitudes in g and 0.5 in Ks, so the spectral
+index is fitted to Liverpool, Lowell and Gemini photometry from g to Ks at
+once:
+
+- the dust is forward-modelled through each instrument's filter curve;
+- each band has a calibration offset with a prior.
+
+From Liverpool's griz alone, beta comes out 0.46 or 0.91 depending on which
+photometric system the published magnitudes are assumed to be in. The near
+infrared shrinks that ambiguity to 0.66 against 0.76, in agreement with the
+published value.
+
+The ZTF zero points use a colour term measured once from all frames, because
+the afterglow is far redder than the calibration stars.
 
 <p align="center">
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="case_studies/grb221009a/figures/sed_dark.png">
-  <img src="case_studies/grb221009a/figures/sed_light.png" alt="The optical spectrum of GRB 221009A before and after removing the Galactic extinction, with a power-law fit" width="75%">
+  <img src="case_studies/grb221009a/figures/sed_light.png" alt="The optical to near-infrared spectrum of GRB 221009A at 4.4 days, as observed and with the Galactic extinction removed, with a power-law fit" width="80%">
 </picture>
 </p>
 
@@ -148,10 +156,9 @@ The full write-up, including what limits the measurement, is in
 
 ZTF imaged GRB 210204A 38 minutes after the Fermi trigger and kept observing
 in g, r and i for a month. Far from the Galactic plane (E(B−V) = 0.028), the
-three bands measure the spectral index directly, and the joint jet-break fit,
-sampled with MCMC, lands on the same physics Kumar et al. (2022) found with
-ZTF and several other telescopes: a constant-density medium and an electron
-index near 2.5.
+three bands measure the spectral index directly. The joint jet-break fit lands
+on the same physics Kumar et al. (2022) found with ZTF and several other
+telescopes: a constant-density medium and an electron index near 2.5.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="case_studies/grb210204a/figures/lightcurve_dark.png">
@@ -160,13 +167,20 @@ index near 2.5.
 
 | ZTF only, this pipeline (68 % intervals) | | Kumar et al. (2022) |
 |---|---:|---:|
-| Break time | 1.3 +0.7 −0.8 d | 0.37 ± 0.30 d |
-| Late decay, alpha2 | 1.44 +0.43 −0.26 | 1.18 ± 0.03 |
-| Spectral index, beta | 0.92 ± 0.19 | ≈ 0.75 (optical to X-ray) |
-| Closure relation | ISM, slow cooling, p = 2.84 ± 0.38 | ISM, p ≈ 2.5 |
+| Break time | 0.95 ± 0.88 d (two modes) | 0.37 ± 0.30 d |
+| Late decay, alpha2 | 1.28 +0.47 −0.16 | 1.18 ± 0.03 |
+| Spectral index, beta | 0.93 ± 0.19 | ≈ 0.75 (optical to X-ray) |
+| Closure relation | ISM, slow cooling, p = 2.86 ± 0.38 | ISM, p ≈ 2.5 |
 
-With a single ZTF epoch before the break, the posterior of the break time and
-the late decay is strongly asymmetric, which a least-squares error bar hides.
+With a single ZTF epoch before the break, the posterior has two modes:
+
+- a break between 1 and 2 days;
+- a break right after that first epoch, which leaves the early decay
+  unconstrained.
+
+MCMC does not converge on that shape, and least squares sees only the first
+mode. The posterior is therefore integrated on a grid of break time and early
+decay index.
 The write-up is in [`case_studies/grb210204a`](case_studies/grb210204a/README.md).
 
 ## How it works
@@ -190,8 +204,9 @@ The write-up is in [`case_studies/grb210204a`](case_studies/grb210204a/README.md
 | Photometry | `photometry`, `psf` | Aperture photometry with masked, sigma-clipped sky annuli and CCD-equation errors; empirical PSF (Moffat + oversampled residual) fitted to all sources at once; forced PSF fits on difference images with errors from blank positions |
 | Reduction | `pipeline` | Seeing-matched apertures, per-frame zero point, astrometric correction, template subtraction, forced photometry at the burst |
 | Light curve | `lightcurve` | Multi-band light curve in flux density, so faint and negative forced fluxes are kept |
+| Filters | `filters`, `spectral` | 35 system transmission curves (ZTF, Pan-STARRS1, SDSS, Liverpool, Gemini, Palomar, 2MASS, HST) from the SVO Filter Profile Service; synthetic photometry of a power law behind dust through any of them |
 | Extinction | `extinction` | Milky Way (Cardelli et al. 1989) and SMC-like host (Pei 1992) curves; corrections averaged over filter transmission curves; afterglow colours |
-| Fitting | `fitting`, `mcmc` | Single and smoothly broken power laws, joint across bands with spectral index beta and optional host A_V; AIC/BIC comparison; posterior sampling with `emcee` |
+| Fitting | `fitting`, `mcmc` | Single and smoothly broken power laws, joint across bands and instruments: spectral index, Galactic dust forward-modelled through each filter curve, optional host A_V, calibration offsets with priors; AIC/BIC comparison; posteriors with `emcee` or on a grid |
 | Physics | `closure` | Ranks the closure relations against the measured (alpha, beta) and infers `p` |
 | Data | `synthetic`, `archives` | Simulated campaigns with known truth; ZTF (IRSA) and Pan-STARRS1 (MAST) access |
 
@@ -279,6 +294,20 @@ best = evaluate_closure_relations(p["alpha2"], e["alpha2"], p["beta"], e["beta"]
 print(f"{best.relation.label}: p = {best.p:.2f} ± {best.p_err:.2f}")
 ```
 
+Photometry from several telescopes goes into one fit by naming each band after
+its filter curve (`grb_afterglow.filters.available_filters()` lists them):
+
+```python
+joint = fit_lightcurve(
+    combined,  # a LightCurve with bands such as "lt:r", "ztf:g", "f2:Ks"
+    "single",
+    reference_band="lt:r",
+    ebv_mw=1.32,  # Galactic dust, applied to the model through every filter curve
+    calibration_offsets={"ztf": 0.03, "f2": 0.05},  # zero-point offsets (mag) with Gaussian priors
+)
+print(joint.params["beta"], joint.offsets)
+```
+
 `p2pl simulate my_data` writes a simulated campaign in exactly this layout (run the snippet inside `my_data/`).
 
 ## Repository layout
@@ -292,6 +321,7 @@ examples/synthetic/     demo outputs: light curve, per-frame table, validation s
 docs/                   science background, figures, architecture diagram (make_architecture.py)
 dev/bakeoff/            harness and results of the PSF-photometry and image-subtraction method comparison
 scripts/run_demo.py     regenerates the demo outputs and README figures
+scripts/fetch_filters.py rebuilds the filter curves in src/grb_afterglow/data/filters from the SVO service
 ```
 
 ## Testing and quality
@@ -308,22 +338,23 @@ realisations match the quoted uncertainties, PSF fluxes are unbiased with
 unit-width pulls, image subtraction cancels static stars and the host while
 keeping the transient's flux in both seeing directions, and an end-to-end run
 recovers the injected afterglow physics. CI runs on Python 3.10 to 3.13 and also runs the
-demo and the case study.
+demo and both case studies.
 
 ## Scope and roadmap
 
 Done: PSF photometry and image subtraction (0.3); colour terms, Milky Way and
-host extinction, MCMC posteriors and a second case study (0.4). Next:
+host extinction, MCMC posteriors and a second case study (0.4). In progress
+for 0.5:
 
 - [ ] Spatially varying PSF and kernel, for full CCD frames rather than cutouts
-- [ ] Cross-calibration of several instruments into one light curve
+- [x] Cross-calibration of several instruments into one light curve
 - [ ] Physical afterglow models (e.g. `afterglowpy`) fitted alongside power laws
-- [ ] Near-infrared data, so the spectral index is less sensitive to dust
+- [x] Near-infrared data, so the spectral index is less sensitive to dust
 
 ## Documentation
 
 - [Science background](docs/science_background.md): afterglows, closure relations, jet breaks, image subtraction, PSF photometry, extinction
-- [GRB 221009A case study](case_studies/grb221009a/README.md)
+- [GRB 221009A case study](case_studies/grb221009a/README.md) · [GRB 210204A case study](case_studies/grb210204a/README.md)
 - [Changelog](CHANGELOG.md) · [Contributing](CONTRIBUTING.md) · [Citation](CITATION.cff)
 
 ## Citation
@@ -343,11 +374,14 @@ If this project helps your work, please cite it using [`CITATION.cff`](CITATION.
 ## Acknowledgements
 
 Built on [Astropy](https://www.astropy.org/) and
-[photutils](https://photutils.readthedocs.io/). The case study uses public data
+[photutils](https://photutils.readthedocs.io/). The case studies use public data
 from the Zwicky Transient Facility via the NASA/IPAC Infrared Science Archive
-and from Pan-STARRS1 via MAST, and Liverpool Telescope photometry published by
-Laskar et al. (2023); see
+and from Pan-STARRS1 via MAST, Liverpool Telescope photometry published by
+Laskar et al. (2023), and Lowell, Gemini, Palomar and HST photometry published
+by O'Connor et al. (2023); see
 [`case_studies/grb221009a/data`](case_studies/grb221009a/data/README.md) for
-full acknowledgements.
+full acknowledgements. This research has made use of the SVO Filter Profile
+Service "Carlos Rodrigo", funded by MCIN/AEI/10.13039/501100011033/ through
+grant PID2023-146210NB-I00 (Rodrigo et al. 2012, 2020, 2024).
 
 Released under the [MIT License](LICENSE).

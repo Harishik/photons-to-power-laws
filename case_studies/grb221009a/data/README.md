@@ -1,7 +1,7 @@
 # Data for the GRB 221009A case study
 
 All files here are public data, committed so the analysis runs offline and in
-CI. `../fetch_data.py` rebuilds everything except the literature table.
+CI. `../fetch_data.py` rebuilds everything except the literature tables.
 
 | File | Content | Source |
 |---|---|---|
@@ -10,6 +10,7 @@ CI. `../fetch_data.py` rebuilds everything except the literature table.
 | `ztf_manifest.csv` | IRSA metadata for every image covering the position, including five late epochs IRSA does not serve | IRSA |
 | `panstarrs_dr1.csv` | Pan-STARRS1 DR1 mean PSF photometry (g, r, i) within 1.6′ | [MAST](https://catalogs.mast.stsci.edu/panstarrs/) |
 | `laskar2023_liverpool.csv` | Liverpool Telescope griz photometry, transcribed from Table 2 of Laskar et al. (2023) | [doi:10.3847/2041-8213/acbfad](https://doi.org/10.3847/2041-8213/acbfad) |
+| `oconnor2023_oir.csv` | Lowell LMI, Gemini GMOS-S and Flamingos-2, Palomar WIRC and HST WFC3 photometry, transcribed from the table of optical and infrared observations of O'Connor et al. (2023), with the registry filter curve that models each band | [doi:10.1126/sciadv.adi1405](https://doi.org/10.1126/sciadv.adi1405) |
 
 Coordinates: RA 288.26452°, Dec +19.77350° (Swift/UVOT, GCN Circular 32632).
 Trigger: Fermi/GBM, 2022-10-09 13:16:59 UT (GCN Circular 32636).

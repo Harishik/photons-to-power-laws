@@ -1,6 +1,3 @@
-# Liverpool Telescope IO:O SDSS-g system transmission (filter, optics, detector).
-# SVO Filter Profile Service, filter ID Liverpool/IOO.SDSS-g (Rodrigo et al. 2012, 2020), retrieved 2026-10-10.
-# Columns: wavelength (Angstrom), transmission.
 3910 0.00065377966
 3915 0.00095851508
 3920 0.0015183089

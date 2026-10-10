@@ -54,6 +54,9 @@ Issues = "https://github.com/Harishik/photons-to-power-laws/issues"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+grb_afterglow = ["data/filters/*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"

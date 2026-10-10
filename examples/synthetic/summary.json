@@ -83,6 +83,35 @@
     }
   },
   "injected_regime": "ISM, slow cooling, nu_m < nu < nu_c, jet break",
+  "posterior": {
+    "method": "emcee ensemble sampler, flat priors",
+    "acceptance_fraction": 0.5528671875,
+    "t_break_days": {
+      "median": 0.49469265879719915,
+      "lower_68": 0.4841209302598996,
+      "upper_68": 0.5053910884506906
+    },
+    "alpha1": {
+      "median": 0.9007434459920194,
+      "lower_68": 0.8996321066513492,
+      "upper_68": 0.9018650035056871
+    },
+    "alpha2": {
+      "median": 2.1904704668242556,
+      "lower_68": 2.153072231117559,
+      "upper_68": 2.2294979882197468
+    },
+    "beta": {
+      "median": 0.608138205344364,
+      "lower_68": 0.6021265862690773,
+      "upper_68": 0.6142471445369714
+    },
+    "p_post_break": {
+      "median": 2.216276410688728,
+      "lower_68": 2.204253172538155,
+      "upper_68": 2.228494289073943
+    }
+  },
   "reduction": {
     "photometry": "psf",
     "template_subtraction": true

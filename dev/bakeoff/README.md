@@ -1,8 +1,9 @@
 # PSF-photometry and image-subtraction bake-off
 
-How the methods in `grb_afterglow.psf` and `grb_afterglow.subtraction` were chosen. `harness.py`
-scores a candidate on the same synthetic data (with known truth) and real data (the ZTF epochs of
-GRB 221009A, checked against Liverpool Telescope photometry):
+How the methods in `grb_afterglow.psf` and `grb_afterglow.subtraction` were chosen. Five candidates
+were written independently and scored by the same harness, `harness.py`, on synthetic data with known
+truth and on real data (the ZTF epochs of GRB 221009A, checked against Liverpool Telescope
+photometry):
 
 ```bash
 cd dev/bakeoff
@@ -10,43 +11,77 @@ python harness.py psf psf_empirical/method.py           # add --quick while iter
 python harness.py subtraction sub_bramich/method.py
 ```
 
-Each candidate directory holds `method.py` and its `results_*.json`. The two winners now point at
-the shipped package code, so the harness doubles as a validation of what the pipeline runs (the
-packaged versions reproduce the prototypes' scores). `HARNESS_CHANGELOG.md` records two fixes to
-the harness itself; results from before a fix are not comparable.
+Each candidate directory holds `method.py` and its `results_*.json` (full runs; the two baselines
+were scored with `--quick`). The two winners point at the shipped package code, so the harness
+doubles as a validation of what the pipeline runs. `HARNESS_CHANGELOG.md` records the fixes to the
+harness itself; every result here was produced after the last of them.
 
-## PSF photometry: `psf_empirical`
+## PSF photometry
 
-An empirical PSF (pixel-integrated elliptical Moffat plus an oversampled, regularised residual)
-built from each image, fitted to all sources at once. Synthetic fields at three seeings, sparse and
-crowded, 2226 stars; real data are the 11 ZTF frames.
+Synthetic fields at three seeings, sparse and crowded (2226 stars); real data are the 11 ZTF frames.
 
-| Metric | Empirical PSF | Apertures (`baseline_aperture`) |
-|---|---:|---:|
-| Bias on bright stars | +0.02 % | |
-| Robust spread of the pulls (all / crowded) | 1.02 / 1.01 | |
-| Median error of faint stars | 9.2 % | 30.1 % |
-| ZTF zero-point scatter against Pan-STARRS1 | 0.055 mag | 0.075 mag |
+| Metric | `psf_empirical` (shipped) | `psf_analytic` | Apertures (`baseline_aperture`) |
+|---|---:|---:|---:|
+| Bias on bright stars | +0.02 % | −0.13 % | |
+| Robust spread of the pulls (all / crowded) | 1.02 / 1.01 | 1.03 / 1.02 | |
+| Median error of faint stars | 9.2 % | 9.4 % | 30.1 % |
+| ZTF zero-point scatter against Pan-STARRS1 | **0.055 mag** | 0.073 mag | 0.075 mag |
+| Run time (full harness) | 27 s | 109 s | |
 
-An analytic-PSF variant (`photutils.psf` with a fitted Moffat) was started but not finished.
+* **`psf_empirical`**: a pixel-integrated elliptical Moffat plus an oversampled, regularised residual
+  map, built from each image and fitted to all sources at once.
+* **`psf_analytic`**: the same Moffat without the residual map, fitted jointly to isolated stars, with
+  box-wise forced photometry, neighbour fitting and a PSF-model error from the shape covariance.
 
-## Image subtraction: `sub_bramich`
+On the synthetic fields, whose stars *are* Moffat profiles, the two are equivalent. On real ZTF
+frames only the empirical model improves on apertures: real PSFs are not Moffat profiles, and the
+residual map is what captures the difference. It is also four times faster.
 
-A delta-function-basis kernel (Bramich 2008) with an errors-in-variables correction, Laplacian
-regularisation, sigma clipping and a bright-pixel scale refit. Synthetic pairs with a transient on
-a PSF-convolved host galaxy, in four seeing configurations (science sharper, template sharper,
-matched, undersampled), 10 noise realisations, three transient fluxes.
+## Image subtraction
 
-| Metric | Bramich | No PSF matching (`baseline_naive`, 4 realisations) |
-|---|---:|---:|
-| Pulls in a 1.2 FWHM aperture: mean / spread | +0.02 / 1.13 | −3.5 / 11.9 |
-| Pulls with no transient: spread | 1.07 | 12.1 |
-| Noise relative to the ideal (no correlated noise) | 0.995 | 1.32 |
-| Residual of bright static stars | 0.5 % of their flux | 21 % |
-| Real ZTF data, chi²/pt against Liverpool (detected / late epochs) | 0.23 / 0.65 | |
+Synthetic pairs with a transient on a PSF-convolved host galaxy, in four seeing configurations
+(science sharper, template sharper, matched, undersampled), 10 noise realisations and three
+transient fluxes each.
 
-Alard-Lupton (Gaussian basis) and ZOGY prototypes were started but not finished; the Bramich kernel
-met every target first, without assumptions about either PSF.
+| Metric | `sub_bramich` (shipped) | `sub_alard` | `sub_zogy` | No PSF matching (`baseline_naive`, quick) |
+|---|---:|---:|---:|---:|
+| Pulls in a 1.2 FWHM aperture: mean / spread | +0.02 / 1.13 | −0.05 / 1.17 | +0.04 / 1.17 | −3.5 / 11.9 |
+| Pulls with no transient: spread | 1.07 | 1.12 | 1.15 | 12.1 |
+| Bias on a bright transient | −1.7 % | −2.0 % | −0.7 % | −16 % |
+| Noise relative to the ideal | 0.995 | 0.993 | 1.07 | 1.32 |
+| Residual of bright static stars | 0.5 % | 0.5 % | 0.6 % | 21 % |
+| Real ZTF data: chi²/pt against Liverpool, detected / late epochs | 0.23 / 0.65 | 0.20 / 0.46 | 0.42 / 0.31 | |
+| Real ZTF data: median flux error | 4.1 µJy | 3.9 µJy | 6.1 µJy | |
+| Run time (full harness) | 170 s | 155 s | 551 s | |
+
+* **`sub_bramich`**: a delta-function-basis kernel (Bramich 2008) with an errors-in-variables
+  correction, Laplacian regularisation, sigma clipping and a bright-pixel scale refit.
+* **`sub_alard`**: the Alard & Lupton (1998) basis of Gaussians times polynomials, with a fourth, wide
+  Gaussian for Moffat wings, the same errors-in-variables idea (corrected least squares in the
+  noise-orthonormal eigenbasis) and quintic-spline resampling.
+* **`sub_zogy`**: ZOGY proper image subtraction (Zackay, Ofek & Gal-Yam 2016) with Moffat PSFs fitted to
+  both images and the flux ratio measured on the cross-convolved images.
+
+Bramich and Alard-Lupton are statistically indistinguishable: Bramich's errors are a little better
+calibrated on synthetic data (pull spreads 1.13 and 1.07 against 1.17 and 1.12), Alard-Lupton's
+difference images are a little less noisy on ZTF. Bramich was kept because its kernel needs no
+choice of basis widths and degrees. ZOGY has the smallest bright-flux bias, but on real data it
+is the noisiest of the three, because its analytic Moffat PSFs do not describe the ZTF PSF (the
+proper-subtraction optimality assumes known PSFs), and it is three times slower.
+
+### Problems found while finishing the candidates
+
+* **Kernel orientation.** The harness calibrates real data by convolving the science image with the
+  method's kernel, using `scipy.ndimage.correlate`. The Alard-Lupton kernel was fitted for true
+  convolution; returned unflipped, any asymmetry from residual misregistration was mirrored. Flipping
+  it moved the real-data chi²/pt of the detected epochs from 0.24 to 0.20.
+* **ZOGY and the real-data calibration.** ZOGY returned no kernel, so the harness fell back to the
+  template's curve of growth (below) and scored chi²/pt = 16.7 on the detected ZTF epochs. ZOGY now
+  returns the filter it applies to the science image, `K_n`, and the PSF of its difference image,
+  whose encircled energy replaces the Moffat profile the harness assumed: 0.42.
+* **The analytic PSF re-centres bright targets** (S/N > 10) instead of keeping their positions fixed.
+  The harness passes exact positions, so this can only add scatter; it is visible as a slightly
+  wider pull distribution but did not change the ranking.
 
 ### The 2x flux excess on ZTF data was the harness
 

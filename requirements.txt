@@ -4,3 +4,4 @@ scipy>=1.10
 matplotlib>=3.7
 astropy>=5.3
 photutils>=1.10
+emcee>=3.1

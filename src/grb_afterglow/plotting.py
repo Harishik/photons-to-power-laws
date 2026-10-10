@@ -178,6 +178,7 @@ def plot_lightcurve(
     extra: Sequence[tuple[LightCurve, str]] = (),
     band_labels: dict[str, str] | None = None,
     model_range: tuple[float, float] | None = None,
+    wavelengths_nm: dict[str, float] | None = None,
     title: str | None = None,
     subtitle: str | None = None,
     theme: str = "light",
@@ -209,6 +210,9 @@ def plot_lightcurve(
     model_range
         ``(t_min, t_max)`` in days over which to draw the model, e.g. the
         range that was fitted. Defaults to the full plot.
+    wavelengths_nm
+        Effective wavelengths per band, as used in the fit (defaults to the
+        Pan-STARRS1 values).
     """
     with themed(theme) as t:
         if show_residuals and fit is not None:
@@ -253,7 +257,7 @@ def plot_lightcurve(
                 ax.scatter(d[~det], lim, marker="v", s=46, facecolor="none", edgecolor=color, lw=1.2, zorder=4)
             label = (band_labels or {}).get(band, str(band))
             if fit is not None:
-                nu = band_frequency_hz(band) if fit.nu_ref else None
+                nu = band_frequency_hz(band, wavelengths_nm) if fit.nu_ref else None
                 model = fit.predict(model_days * SECONDS_PER_DAY, nu)
                 ax.plot(model_days, model, color=color, lw=1.8, alpha=0.9, zorder=3)
                 if rax is not None:
@@ -299,7 +303,7 @@ def plot_lightcurve(
 
         if alternative is not None:
             ref_band = bands[0]
-            nu = band_frequency_hz(ref_band) if alternative.nu_ref else None
+            nu = band_frequency_hz(ref_band, wavelengths_nm) if alternative.nu_ref else None
             ax.plot(
                 grid_days,
                 alternative.predict(grid_days * SECONDS_PER_DAY, nu),
@@ -808,3 +812,214 @@ def plot_subtraction(
         fig.subplots_adjust(wspace=0.12, left=0.01, right=0.99, bottom=0.02, top=0.84 if title else 0.9)
         _save(fig, savepath)
         return fig, axes
+
+
+_PARAM_LABELS = {
+    "amplitude": "amplitude",
+    "t_break_days": r"$t_b$ (d)",
+    "alpha": r"$\alpha$",
+    "alpha1": r"$\alpha_1$",
+    "alpha2": r"$\alpha_2$",
+    "beta": r"$\beta$",
+    "host_av": r"$A_{V,\rm host}$",
+    "p": r"$p$",
+}
+
+
+def _credible_levels(hist: np.ndarray, levels: Sequence[float]) -> list[float]:
+    """Density thresholds enclosing the given probability mass of a 2-D histogram."""
+    flat = np.sort(hist.ravel())[::-1]
+    cum = np.cumsum(flat) / flat.sum()
+    return [float(flat[min(np.searchsorted(cum, q), flat.size - 1)]) for q in levels]
+
+
+def plot_posterior(
+    posterior,
+    params: Sequence[str] | None = None,
+    *,
+    derived: dict[str, np.ndarray] | None = None,
+    truths: dict[str, float] | None = None,
+    title: str | None = None,
+    theme: str = "light",
+    savepath: str | PathLike[str] | None = None,
+):
+    """Corner plot of posterior samples: marginals on the diagonal, 68 % and 95 % regions below it.
+
+    Parameters
+    ----------
+    posterior
+        A :class:`~grb_afterglow.mcmc.Posterior`.
+    params
+        Names to show (``"t_break_days"`` for the break time in days). Defaults
+        to every fitted parameter except the amplitude, then any ``derived`` ones.
+    derived
+        Extra sample arrays to show, e.g. ``{"p": posterior.p("jet_slow")}``.
+    truths
+        Reference values (e.g. injected parameters), drawn as lines.
+    """
+    from scipy.ndimage import gaussian_filter
+
+    derived = derived or {}
+    if params is None:
+        params = [("t_break_days" if n == "t_break" else n) for n in posterior.names if n != "amplitude"]
+        params += list(derived)
+    data = [np.asarray(derived[n] if n in derived else posterior[n], dtype=float) for n in params]
+    k = len(params)
+    with themed(theme) as t:
+        accent = t.series[0]
+        fig, axes = plt.subplots(k, k, figsize=(1.75 * k + 0.7, 1.75 * k + 0.7), squeeze=False)
+        ranges = []
+        for x in data:
+            lo, hi = np.percentile(x, [0.2, 99.8])
+            pad = 0.08 * (hi - lo or abs(lo) or 1.0)
+            ranges.append((lo - pad, hi + pad))
+        for i in range(k):
+            for j in range(k):
+                ax = axes[i, j]
+                if j > i:
+                    ax.set_axis_off()
+                    continue
+                ax.grid(False)
+                if i == j:
+                    ax.hist(data[i], bins=40, range=ranges[i], histtype="stepfilled", color=accent, alpha=0.25)
+                    ax.hist(data[i], bins=40, range=ranges[i], histtype="step", color=accent, lw=1.2)
+                    lo, med, hi = np.percentile(data[i], [15.865, 50, 84.135])
+                    for v, ls in ((lo, ":"), (med, "-"), (hi, ":")):
+                        ax.axvline(v, color=t.ink_secondary, lw=0.9, ls=ls)
+                    digits = max(0, int(np.ceil(-np.log10(max(min(med - lo, hi - med), 1e-12)))) + 1)
+                    ax.set_title(
+                        f"{_PARAM_LABELS.get(params[i], params[i])} = {med:.{digits}f}"
+                        f"$^{{+{hi - med:.{digits}f}}}_{{-{med - lo:.{digits}f}}}$",
+                        fontsize=9.5,
+                        loc="center",
+                        fontweight="normal",
+                    )
+                    ax.spines["left"].set_visible(False)
+                else:
+                    h, xe, ye = np.histogram2d(data[j], data[i], bins=40, range=[ranges[j], ranges[i]])
+                    h = gaussian_filter(h.T, 1.0)
+                    lv = _credible_levels(h, (0.95, 0.68))
+                    xc, yc = 0.5 * (xe[1:] + xe[:-1]), 0.5 * (ye[1:] + ye[:-1])
+                    if lv[0] < lv[1]:
+                        ax.contourf(xc, yc, h, levels=[lv[0], h.max() * 1.01], colors=[accent], alpha=0.18)
+                        ax.contourf(xc, yc, h, levels=[lv[1], h.max() * 1.01], colors=[accent], alpha=0.35)
+                        ax.contour(xc, yc, h, levels=lv, colors=[accent], linewidths=0.9)
+                    if truths and params[i] in truths:
+                        ax.axhline(truths[params[i]], color=t.series[2], lw=1.0)
+                    ax.set_ylim(ranges[i])
+                if truths and params[j] in truths:
+                    ax.axvline(truths[params[j]], color=t.series[2], lw=1.0)
+                ax.set_xlim(ranges[j])
+                ax.xaxis.set_major_locator(plt.MaxNLocator(3))
+                if i == j:
+                    ax.set_yticks([])
+                else:
+                    ax.yaxis.set_major_locator(plt.MaxNLocator(3))
+                if i < k - 1:
+                    ax.set_xticklabels([])
+                else:
+                    ax.set_xlabel(_PARAM_LABELS.get(params[j], params[j]))
+                    ax.tick_params(axis="x", labelrotation=40)
+                if j > 0 and i != j:
+                    ax.set_yticklabels([])
+                elif i != j:
+                    ax.set_ylabel(_PARAM_LABELS.get(params[i], params[i]))
+        if truths:
+            fig.legend(
+                handles=[Line2D([], [], color=t.series[2], lw=1.2, label="injected")],
+                loc="upper right",
+                bbox_to_anchor=(0.98, 0.98),
+            )
+        if title:
+            fig.suptitle(title, x=0.02, ha="left", fontsize=12, color=t.ink, weight="bold")
+        fig.subplots_adjust(hspace=0.08, wspace=0.08)
+        _save(fig, savepath)
+        return fig, axes
+
+
+def plot_sed(
+    observed: LightCurve,
+    corrected: LightCurve,
+    fit: FitResult,
+    t_ref_days: float,
+    *,
+    wavelengths_nm: dict[str, float] | None = None,
+    fit_label: str | None = None,
+    title: str | None = None,
+    subtitle: str | None = None,
+    theme: str = "light",
+    savepath: str | PathLike[str] | None = None,
+):
+    """Spectral energy distribution at one time, before and after an extinction correction.
+
+    Every point is moved to ``t_ref_days`` along the fitted (achromatic)
+    temporal model and the points of each band are averaged with inverse
+    variance weights. The corrected SED is drawn with the fitted power law
+    ``F ∝ nu^-beta``; the observed one shows how much the dust reddened it.
+    """
+    from .extinction import band_wavelength_nm
+
+    t_ref = t_ref_days * SECONDS_PER_DAY
+
+    def sed(lc: LightCurve):
+        out = []
+        for band in _sorted_bands(lc):
+            sub = lc.select(band)
+            nu = band_frequency_hz(str(band), wavelengths_nm)
+            scale = fit.predict(np.array([t_ref]), nu)[0] / fit.predict(sub.time, np.full(len(sub), nu))
+            f, e = sub.flux * scale, sub.flux_err * scale
+            w = 1.0 / e**2
+            out.append((band, band_wavelength_nm(str(band), wavelengths_nm), np.sum(w * f) / w.sum(), w.sum() ** -0.5))
+        return out
+
+    with themed(theme) as t:
+        fig, ax = plt.subplots(figsize=(6.4, 4.4))
+        lam_grid = np.geomspace(430.0, 960.0, 200)
+        nu_grid = 299_792_458.0 / (lam_grid * 1e-9)
+        ax.plot(lam_grid, fit.predict(np.full(lam_grid.size, t_ref), nu_grid), color=t.series[0], lw=1.6, zorder=2)
+        label = fit_label or rf"power law, $\beta$ = {fit.params['beta']:.2f}"
+        handles = [Line2D([], [], color=t.series[0], lw=1.6, label=label)]
+        order = {b: k for k, b in enumerate(_sorted_bands(corrected))}
+        series = (("corrected for Galactic dust", sed(corrected), True), ("as observed", sed(observed), False))
+        for label, data, filled in series:
+            for band, lam, f, e in data:
+                color, marker = band_style(band, theme, order.get(band, 0))
+                ax.errorbar(
+                    lam,
+                    f,
+                    yerr=e,
+                    fmt=marker,
+                    ms=7,
+                    mec=color,
+                    color=color,
+                    elinewidth=1.1,
+                    capsize=0,
+                    mfc=color if filled else "none",
+                    zorder=4,
+                )
+                if filled:
+                    ax.annotate(
+                        str(band),
+                        (lam, f),
+                        textcoords="offset points",
+                        xytext=(0, 9),
+                        ha="center",
+                        fontsize=9,
+                        color=t.ink_secondary,
+                    )
+            fill = t.ink_secondary if filled else "none"
+            handles.append(Line2D([], [], color=t.ink_secondary, marker="o", mfc=fill, lw=0, label=label))
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+        ax.set_xlabel("Observed wavelength (nm)")
+        ax.set_ylabel(f"Flux density at {t_ref_days:g} d (µJy)")
+        ax.xaxis.set_major_locator(FixedLocator([450, 500, 600, 700, 800, 900]))
+        ax.xaxis.set_major_formatter(FormatStrFormatter("%d"))
+        ax.xaxis.set_minor_locator(NullLocator())
+        ax.legend(handles=handles, loc="lower right")
+        if title:
+            ax.set_title(title, pad=22 if subtitle else 8)
+        if subtitle:
+            ax.text(0, 1.02, subtitle, transform=ax.transAxes, fontsize=9.5, color=t.ink_secondary, va="bottom")
+        _save(fig, savepath)
+        return fig, ax

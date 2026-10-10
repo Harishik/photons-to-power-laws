@@ -18,13 +18,17 @@ gamma-ray burst (GRB) afterglow and turns them into physics. It calibrates raw
 frames, measures the seeing, calibrates photometry against a reference star
 catalog through the WCS, subtracts a deep template image to remove the host
 galaxy and blended stars, measures the burst with empirical-PSF or aperture
-photometry, fits single and broken power laws jointly across bands, and tests
-the fitted slopes against the closure relations of the fireball model to infer
-the electron energy index, the circumburst medium, and the jet break.
+photometry with colour-term zero points, corrects for Milky Way and host dust,
+fits single and broken power laws jointly across bands, samples their
+posterior with MCMC, and tests the fitted slopes against the closure relations
+of the fireball model to infer the electron energy index, the circumburst
+medium, and the jet break.
 
-It is validated two ways: on a simulated campaign where the true physics is
-known, and on **public ZTF images of GRB 221009A**, the brightest gamma-ray
-burst ever recorded, where it is checked against published photometry.
+It is validated three ways: on a simulated campaign where the true physics is
+known, and on public ZTF images of two real bursts, checked against published
+results: **GRB 221009A**, the brightest gamma-ray burst ever recorded, seen
+through four magnitudes of Galactic dust, and **GRB 210204A**, an afterglow
+ZTF discovered itself and followed in three bands.
 
 ## Results
 
@@ -68,11 +72,21 @@ because once the afterglow fades below the host the aperture measures the host.
 
 The closure-relation test picks the injected regime on its own: an ISM in the
 `nu_m < nu < nu_c` regime before the break and a post-jet-break decay after it.
+The posterior, sampled with MCMC, agrees with the least-squares errors here,
+where the data constrain every parameter well, and shows the correlation
+between the break time and the late decay that a jet-break fit always has.
 
 <p align="center">
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/figures/closure_dark.png">
   <img src="docs/figures/closure_light.png" alt="Measured alpha and beta before and after the break against the closure relations" width="62%">
+</picture>
+</p>
+
+<p align="center">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/figures/posterior_dark.png">
+  <img src="docs/figures/posterior_light.png" alt="Corner plot of the posterior of the jet-break fit with the injected values marked" width="70%">
 </picture>
 </p>
 
@@ -96,11 +110,26 @@ after inspection because a satellite trail crosses the aperture.
 | Same, v0.2 method (aperture minus reference flux) | 1.53 ± 0.15 |
 | Decay index from ZTF + Liverpool Telescope | 1.40 ± 0.02 |
 | Published r′ decay after 0.4 d (Laskar et al. 2023) | 1.42 ± 0.01 |
-| ZTF − Liverpool at the first three detections | +0.00, +0.15, −0.17 mag |
+| ZTF − Liverpool at the first three detections | −0.03, +0.11, −0.19 mag |
+| Spectral index from Liverpool griz, Galactic dust removed (t ≥ 1.7 d) | 0.41 ± 0.06 (stat) ± 0.18 (dust) |
+| Published optical/IR spectral index (O'Connor et al. 2023) | 0.68 ± 0.05 |
 
 Difference imaging with PSF photometry raises the signal-to-noise of each
 detection by a factor of 1.4 to 1.9 over the v0.2 measurement and shrinks the
 error on the ZTF-only decay index by 40 %. Both agree with the published value.
+Behind `E(B−V) = 1.32` the observed spectrum is absurdly red (beta = 4.35);
+averaged over the actual Liverpool filter curves, the dust correction gives a
+spectral index within 1.4σ of the published one, with an error dominated by
+the uncertainty of the dust itself. The ZTF zero points use a colour term
+measured once from all frames, because the afterglow is far redder than the
+calibration stars.
+
+<p align="center">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="case_studies/grb221009a/figures/sed_dark.png">
+  <img src="case_studies/grb221009a/figures/sed_light.png" alt="The optical spectrum of GRB 221009A before and after removing the Galactic extinction, with a power-law fit" width="75%">
+</picture>
+</p>
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="case_studies/grb221009a/figures/subtraction_dark.png">
@@ -114,6 +143,31 @@ error on the ZTF-only decay index by 40 %. Both agree with the published value.
 
 The full write-up, including what limits the measurement, is in
 [`case_studies/grb221009a`](case_studies/grb221009a/README.md).
+
+### Real data: GRB 210204A, a jet break in three ZTF bands
+
+ZTF imaged GRB 210204A 38 minutes after the Fermi trigger and kept observing
+in g, r and i for a month. Far from the Galactic plane (E(B−V) = 0.028), the
+three bands measure the spectral index directly, and the joint jet-break fit,
+sampled with MCMC, lands on the same physics Kumar et al. (2022) found with
+ZTF and several other telescopes: a constant-density medium and an electron
+index near 2.5.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="case_studies/grb210204a/figures/lightcurve_dark.png">
+  <img src="case_studies/grb210204a/figures/lightcurve_light.png" alt="GRB 210204A g, r, i light curve from ZTF with a jet-break fit" width="100%">
+</picture>
+
+| ZTF only, this pipeline (68 % intervals) | | Kumar et al. (2022) |
+|---|---:|---:|
+| Break time | 1.3 +0.7 −0.8 d | 0.37 ± 0.30 d |
+| Late decay, alpha2 | 1.44 +0.43 −0.26 | 1.18 ± 0.03 |
+| Spectral index, beta | 0.92 ± 0.19 | ≈ 0.75 (optical to X-ray) |
+| Closure relation | ISM, slow cooling, p = 2.84 ± 0.38 | ISM, p ≈ 2.5 |
+
+With a single ZTF epoch before the break, the posterior of the break time and
+the late decay is strongly asymmetric, which a least-squares error bar hides.
+The write-up is in [`case_studies/grb210204a`](case_studies/grb210204a/README.md).
 
 ## How it works
 
@@ -131,12 +185,13 @@ The full write-up, including what limits the measurement, is in
 |---|---|---|
 | Calibration | `calibration` | Sigma-clipped master bias and flats; `(raw − bias) / flat` |
 | Detection | `detection` | Background and RMS maps, DAOFIND detection, seeing from Gaussian fits to isolated stars, source masks |
-| Calibration to AB | `zeropoint` | One-to-one WCS cross-match; robust weighted zero point with optional colour term |
+| Calibration to AB | `zeropoint` | One-to-one WCS cross-match; robust weighted zero point; colour terms, fitted or fixed, evaluated at the burst's colour |
 | Image subtraction | `subtraction` | Template resampled through the WCS; Bramich (2008) delta-basis kernel with errors-in-variables correction, regularisation and clipping; difference image in science counts |
 | Photometry | `photometry`, `psf` | Aperture photometry with masked, sigma-clipped sky annuli and CCD-equation errors; empirical PSF (Moffat + oversampled residual) fitted to all sources at once; forced PSF fits on difference images with errors from blank positions |
 | Reduction | `pipeline` | Seeing-matched apertures, per-frame zero point, astrometric correction, template subtraction, forced photometry at the burst |
 | Light curve | `lightcurve` | Multi-band light curve in flux density, so faint and negative forced fluxes are kept |
-| Fitting | `fitting` | Single and smoothly broken power laws, joint across bands with spectral index beta; AIC/BIC comparison |
+| Extinction | `extinction` | Milky Way (Cardelli et al. 1989) and SMC-like host (Pei 1992) curves; corrections averaged over filter transmission curves; afterglow colours |
+| Fitting | `fitting`, `mcmc` | Single and smoothly broken power laws, joint across bands with spectral index beta and optional host A_V; AIC/BIC comparison; posterior sampling with `emcee` |
 | Physics | `closure` | Ranks the closure relations against the measured (alpha, beta) and infers `p` |
 | Data | `synthetic`, `archives` | Simulated campaigns with known truth; ZTF (IRSA) and Pan-STARRS1 (MAST) access |
 
@@ -230,8 +285,9 @@ print(f"{best.relation.label}: p = {best.p:.2f} ± {best.p_err:.2f}")
 
 ```text
 src/grb_afterglow/      the package (pipeline stages, fitting, closure relations, plots, CLI)
-tests/                  91 tests: unit, statistical error-bar checks, end-to-end recovery
-case_studies/grb221009a fetch_data.py, analyze.py, committed public data, results, figures
+tests/                  106 tests: unit, statistical error-bar checks, end-to-end recovery
+case_studies/grb221009a ZTF case study behind the Galactic plane: fetch_data.py, analyze.py, data, results, figures
+case_studies/grb210204a three-band ZTF case study with a jet break and late flares
 examples/synthetic/     demo outputs: light curve, per-frame table, validation summary
 docs/                   science background, figures, architecture diagram (make_architecture.py)
 dev/bakeoff/            harness and results of the PSF-photometry and image-subtraction method comparison
@@ -242,7 +298,7 @@ scripts/run_demo.py     regenerates the demo outputs and README figures
 
 ```bash
 pip install -e ".[dev]"
-pytest --cov          # 91 tests
+pytest --cov          # 106 tests
 ruff check . && ruff format --check .
 ```
 
@@ -256,12 +312,13 @@ demo and the case study.
 
 ## Scope and roadmap
 
-Done in 0.3: PSF photometry and image subtraction against a template. Next:
+Done: PSF photometry and image subtraction (0.3); colour terms, Milky Way and
+host extinction, MCMC posteriors and a second case study (0.4). Next:
 
-- [ ] Colour terms between instrument and catalog bandpasses in `reduce_frame`
-- [ ] Galactic and host extinction corrections, so beta can be measured on real data
-- [ ] Bayesian (MCMC) fitting for posterior distributions of the break time and `p`
-- [ ] More case studies from public archives
+- [ ] Spatially varying PSF and kernel, for full CCD frames rather than cutouts
+- [ ] Cross-calibration of several instruments into one light curve
+- [ ] Physical afterglow models (e.g. `afterglowpy`) fitted alongside power laws
+- [ ] Near-infrared data, so the spectral index is less sensitive to dust
 
 ## Documentation
 
@@ -278,7 +335,7 @@ If this project helps your work, please cite it using [`CITATION.cff`](CITATION.
   author  = {Jamwal, Harishik Dev Singh},
   title   = {Photons to Power Laws: an optical photometry pipeline for gamma-ray burst afterglows},
   year    = {2026},
-  version = {0.3.0},
+  version = {0.4.0},
   url     = {https://github.com/Harishik/photons-to-power-laws},
 }
 ```

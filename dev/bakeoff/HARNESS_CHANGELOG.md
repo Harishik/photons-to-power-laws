@@ -12,3 +12,9 @@
   light from neighbouring stars in this deep Galactic-plane coadd (frac = 0.375 at 1.2 FWHM, against 0.80 from
   a median-stacked PSF of the same stars), so every flux measured with the reference PSF came out ~2x too
   high. Methods that return no kernel keep the old (unreliable) curve-of-growth path.
+- **21:40** eval_subtraction, synthetic data: a method may return ``"psf"``, a stamp of its difference image's
+  PSF; the aperture fluxes are then corrected with that PSF's encircled energy instead of a Moffat (beta = 3)
+  profile of FWHM ``"fwhm"``. Needed for ZOGY, whose difference-image PSF is not a Moffat. Methods whose
+  difference image keeps an input PSF (Bramich, Alard-Lupton) return no stamp and are scored exactly as before.
+  The kernel convention is now documented: ``"kernel"`` in ``scipy.ndimage.correlate`` orientation (the
+  Alard-Lupton entry, fitted for convolution, flips its kernel).

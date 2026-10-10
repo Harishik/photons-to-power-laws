@@ -11,7 +11,11 @@ A *subtraction* method module must define
 
 returning at least ``{"diff": D}`` where ``D`` is on the SCIENCE pixel grid and in
 SCIENCE counts (a transient of F science counts appears in D with total F).
-Optional keys: ``"var"`` (per-pixel variance of D), ``"fwhm"`` (PSF FWHM of D, px).
+Optional keys: ``"var"`` (per-pixel variance of D), ``"fwhm"`` (PSF FWHM of D, px),
+``"kernel"`` and ``"convolved"`` (the kernel applied to the convolved image, in
+``scipy.ndimage.correlate`` orientation, and ``"science"`` or ``"reference"``; used to
+calibrate the real data), ``"psf"`` (a centred, normalised stamp of the PSF of D, used
+for its encircled energy instead of a Moffat profile of FWHM ``fwhm``).
 
 A *psf* method module must define
 
@@ -39,6 +43,7 @@ from astropy import units as u
 from astropy.coordinates import SkyCoord
 from astropy.table import Table
 from astropy.wcs import WCS
+from photutils.aperture import CircularAperture, aperture_photometry
 from scipy import ndimage
 from scipy.signal import fftconvolve
 
@@ -191,6 +196,17 @@ def moffat_fraction(r, fwhm, beta=3.0):
     return 1.0 - (1.0 + (r / alpha) ** 2) ** (1.0 - beta)
 
 
+def encircled_fraction(res, r, fwhm):
+    """Fraction of the difference image's PSF within radius r: from the method's PSF stamp if given."""
+    psf = res.get("psf")
+    if psf is None:
+        return moffat_fraction(r, fwhm)
+    psf = np.asarray(psf, float)
+    c = (psf.shape[1] - 1) / 2.0, (psf.shape[0] - 1) / 2.0
+    inside = float(aperture_photometry(psf, CircularAperture(c, r=r))["aperture_sum"][0])
+    return inside / float(psf.sum())
+
+
 def cog_fraction(img, fr, r):
     """Fraction of a point source's light inside radius r, from the curve of growth of bright stars."""
     bkg = estimate_background(img)
@@ -328,9 +344,10 @@ def eval_subtraction(subtract, quick=False):
                 excl = np.vstack([pair["star_xy"][pair["star_flux"] > 3000], [pair["transient_xy"]]])
                 r_big = 2.5 * max(fs, fr_)
                 fb, sb = measure_on_diff(d, pair["transient_xy"], r_big, excl, exclude_r=r_big + 3)
-                big_pulls.append((fb / moffat_fraction(r_big, fd) - F) / (sb / moffat_fraction(r_big, fd)))
+                frac_big = encircled_fraction(res, r_big, fd)
+                big_pulls.append((fb / frac_big - F) / (sb / frac_big))
                 r = 1.2 * fd
-                frac = moffat_fraction(r, fd)
+                frac = encircled_fraction(res, r, fd)
                 f, sig = measure_on_diff(d, pair["transient_xy"], r, excl, exclude_r=r + 4)
                 f, sig = f / frac, sig / frac
                 small_err.append(sig)

@@ -43,7 +43,7 @@ jobs:
         run: pytest --cov --cov-report=term
 
   science:
-    name: demo and case study
+    name: demo and case studies
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -56,6 +56,8 @@ jobs:
         run: p2pl demo --out "$RUNNER_TEMP/demo" --theme light
       - name: GRB 221009A case study runs on the committed ZTF data
         run: python case_studies/grb221009a/analyze.py --results "$RUNNER_TEMP/cs" --figures "$RUNNER_TEMP/cs_fig"
+      - name: GRB 210204A case study runs on the committed ZTF data
+        run: python case_studies/grb210204a/analyze.py --results "$RUNNER_TEMP/cs2" --figures "$RUNNER_TEMP/cs2_fig"
       - uses: actions/upload-artifact@v4
         with:
           name: science-outputs
@@ -63,3 +65,4 @@ jobs:
             ${{ runner.temp }}/demo/summary.json
             ${{ runner.temp }}/demo/figures
             ${{ runner.temp }}/cs
+            ${{ runner.temp }}/cs2

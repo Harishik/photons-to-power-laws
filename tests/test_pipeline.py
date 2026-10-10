@@ -188,3 +188,30 @@ def test_template_blurrier_than_science(small_campaign, calibration, photometry)
 def test_photometry_option_is_validated():
     with pytest.raises(ValueError):
         PipelineConfig(photometry="optimal")
+
+
+def test_colour_term_in_reduce_frame(small_campaign, calibration):
+    """The simulated instrument has no colour term: the fitted one is ~0 and the flux is unchanged."""
+    from astropy.wcs import WCS
+
+    _, truth = small_campaign
+    raw, bias, flats, catalog, target, _ = calibration
+    info = sorted((f for f in truth["frames"] if f["band"] == "r"), key=lambda f: f["time_s"])[1]
+    image_raw, header = load_fits(raw / info["file"])
+    image = calibrate_frame(image_raw, master_bias=bias, master_flat=flats["r"])
+    kwargs = {"band": "r", "time": header["TSINCE"], "exptime": header["EXPTIME"], "gain": header["GAIN"]}
+    plain = reduce_frame(image, WCS(header), target, catalog, **kwargs)
+    fitted = reduce_frame(
+        image, WCS(header), target, catalog, config=PipelineConfig(color_terms={"r": ("g", "r")}), **kwargs
+    )
+    assert fitted.zeropoint.color_term == pytest.approx(0.0, abs=3 * fitted.zeropoint.color_term_error + 0.01)
+    assert fitted.flux_ujy == pytest.approx(plain.flux_ujy, rel=0.02)
+    fixed = reduce_frame(
+        image,
+        WCS(header),
+        target,
+        catalog,
+        config=PipelineConfig(color_terms={"r": ("g", "r", 0.2, 0.0)}, target_color=1.5),
+        **kwargs,
+    )
+    assert fixed.zeropoint.color_term == 0.2 and fixed.zeropoint.reference_color == 1.5

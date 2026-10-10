@@ -62,6 +62,15 @@ class PipelineConfig:
     PSF built from each frame and fitted to all sources simultaneously, see
     :mod:`grb_afterglow.psf`), which is more precise for faint sources and
     deblends neighbours.
+
+    ``color_terms`` maps a frame band to the two catalog columns of a colour
+    (e.g. ``{"zr": ("g", "r")}``) when the instrument's bandpass differs from
+    the catalog's: the zero point is then fitted with a linear colour term and
+    evaluated at ``target_color``, the burst's colour in that catalog system
+    (see :func:`grb_afterglow.extinction.power_law_color`), or, if that is not
+    given, at the median colour of the calibration stars. A third and fourth
+    element fix the slope and its uncertainty (``("g", "r", 0.14, 0.01)``),
+    e.g. when it has been measured once from many frames.
     """
 
     fwhm_guess: float = 3.5
@@ -76,6 +85,8 @@ class PipelineConfig:
     mask_dilate_fwhm: float = 1.5
     catalog_bands: Mapping[str, str] = field(default_factory=dict)
     photometry: str = "aperture"
+    color_terms: Mapping[str, tuple] = field(default_factory=dict)
+    target_color: float | Mapping[str, float] | None = None
 
     def __post_init__(self) -> None:
         if self.photometry not in ("aperture", "psf"):
@@ -327,7 +338,15 @@ def reduce_frame(
     with np.errstate(divide="ignore", invalid="ignore"):
         star_snr = np.where(star_counts_err > 0, star_counts / star_counts_err, 0.0)
     star_mag, star_mag_err = instrumental_magnitude(star_counts, star_counts_err, exptime)
+    color, slope, slope_err = None, None, 0.0
+    if band in cfg.color_terms:
+        blue, red, *fixed = cfg.color_terms[band]
+        color = (np.asarray(catalog[blue], dtype=float) - np.asarray(catalog[red], dtype=float))[idx_r]
+        if fixed:
+            slope, slope_err = float(fixed[0]), float(fixed[1]) if len(fixed) > 1 else 0.0
     good = (star_snr >= cfg.min_zp_snr) & np.isfinite(cat_mag) & np.isfinite(star_mag)
+    if color is not None:
+        good &= np.isfinite(color)
     if np.count_nonzero(good) < cfg.min_zp_stars:
         raise RuntimeError(f"Only {np.count_nonzero(good)} usable zero-point stars in frame {path or ''}.")
     inst = star_mag[good]
@@ -336,8 +355,14 @@ def reduce_frame(
         cat_mag[good],
         instrumental_errs=star_mag_err[good],
         catalog_errs=None if cat_err is None else cat_err[good],
+        color=None if color is None else color[good],
+        color_term=slope,
+        color_term_error=slope_err,
         sigma=cfg.zp_sigma,
     )
+    if color is not None:
+        target = cfg.target_color.get(band) if isinstance(cfg.target_color, Mapping) else cfg.target_color
+        zp = zp.at_color(float(np.median(color[good][zp.used]) if target is None else target))
 
     diff = None
     if template is not None:

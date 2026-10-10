@@ -26,6 +26,36 @@ def test_zeropoint_fits_colour_term():
     zp = compute_zeropoint(inst, cat, color=colour)
     assert zp.color_term == pytest.approx(0.07, abs=0.01)
     assert zp.value == pytest.approx(25.0, abs=0.01)
+    assert 0 < zp.color_term_error < 0.01
+    assert zp.mean_color == pytest.approx(np.mean(colour[zp.used]))
+
+
+def test_zeropoint_at_a_target_colour():
+    rng = np.random.default_rng(5)
+    colour = rng.uniform(0.2, 1.5, 80)
+    cat = rng.uniform(15, 20, 80)
+    inst = cat - 25.0 - 0.1 * colour + rng.normal(0, 0.01, 80)
+    zp = compute_zeropoint(inst, cat, color=colour)
+    red = zp.at_color(2.5)  # a source redder than every calibration star
+    assert red.value == pytest.approx(25.25, abs=0.03)
+    assert red.reference_color == 2.5
+    assert red.error > zp.at_color(zp.mean_color).error  # extrapolation costs precision
+    # calibrate_magnitudes is consistent whichever colour the zero point refers to
+    m1, _ = calibrate_magnitudes(np.array([-5.0]), zp, color=np.array([1.0]))
+    m2, _ = calibrate_magnitudes(np.array([-5.0]), red, color=np.array([1.0]))
+    assert m1 == pytest.approx(m2)
+    no_term = compute_zeropoint(inst, cat)
+    assert no_term.at_color(3.0) is no_term
+
+
+def test_zeropoint_with_a_fixed_colour_term():
+    rng = np.random.default_rng(6)
+    colour = rng.uniform(0.2, 1.5, 30)
+    cat = rng.uniform(15, 20, 30)
+    inst = cat - 25.0 - 0.1 * colour + rng.normal(0, 0.02, 30)
+    zp = compute_zeropoint(inst, cat, color=colour, color_term=0.1, color_term_error=0.005)
+    assert zp.color_term == 0.1 and zp.color_term_error == 0.005
+    assert zp.value == pytest.approx(25.0, abs=0.02)
 
 
 def test_zeropoint_requires_valid_pairs():

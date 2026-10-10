@@ -1,0 +1,100 @@
+# Case study: GRB 210204A, an afterglow ZTF found itself
+
+GRB 210204A was a long burst detected by Fermi/GBM on 2021 February 4. Its
+coarse gamma-ray localisation would have made the afterglow hard to find, but
+the Zwicky Transient Facility's survey happened to image the field 38 minutes
+later and caught it at r = 17.1 (ZTF21aagwbjr, GCN Circular 29405). ZTF kept
+observing the field in g, r and i for a month. At redshift 0.876 it is also
+known for some of the most delayed optical flares ever seen in an afterglow
+([Kumar et al. 2022](https://arxiv.org/abs/2204.07587)).
+
+Unlike GRB 221009A, this field is far from the Galactic plane
+(E(B−V) = 0.028), so ZTF's three bands measure the spectral index directly.
+
+```bash
+python case_studies/grb210204a/analyze.py      # runs offline on the committed data (~2 minutes)
+python case_studies/grb210204a/fetch_data.py   # optional: rebuild data/ from IRSA and MAST
+```
+
+## Method
+
+1. All 47 public ZTF images from two days before to 40 days after the
+   trigger (field 515, CCD 5, quadrant 1; 30 s exposures) go through
+   `grb_afterglow.reduce_frame` with the deep ZTF reference image of each band
+   as the template: difference imaging and empirical-PSF photometry, with zero
+   points from Pan-STARRS1. Two frames have too few calibration stars.
+2. ZTF and Pan-STARRS1 bandpasses differ, so each band's zero point has a
+   colour term. It is measured once per band, as the median of the per-frame
+   fits over all frames, and applied at the afterglow's own colour (computed
+   from its spectral index): g −0.081 ± 0.020 and r +0.068 ± 0.025 per
+   magnitude of g − r, i +0.151 ± 0.032 per magnitude of r − i.
+3. The light curve is corrected for the Galactic extinction (Schlafly &
+   Finkbeiner 2011, CCM89 curve) and a smoothly broken power law with a common
+   spectral index is fitted jointly to g, r and i before 7 days, where the late
+   flares begin. The posterior is sampled with MCMC (`grb_afterglow.mcmc`).
+
+## Results
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="figures/lightcurve_dark.png">
+  <img src="figures/lightcurve_light.png" alt="GRB 210204A g, r, i light curve from ZTF with a jet-break fit" width="100%">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="figures/subtraction_dark.png">
+  <img src="figures/subtraction_light.png" alt="ZTF discovery image of the afterglow 0.6 hours after the burst, minus the reference image" width="100%">
+</picture>
+
+The afterglow is detected above 3σ in 12 frames, from 0.6 hours to 5 days.
+The discovery image gives r = 17.15 ± 0.03 (502 ± 15 µJy), in agreement with
+the r = 17.11 of the discovery circular.
+
+| | This pipeline (ZTF only, MCMC posterior, 68 %) | Kumar et al. (2022) |
+|---|---:|---:|
+| Preferred model | broken power law (ΔBIC = 83 over a single one) | jet break |
+| Early decay, alpha1 | 0.53 +0.03 −0.13 | ≈ 0.33 |
+| Break time | 1.3 +0.7 −0.8 d | 0.37 ± 0.30 d |
+| Late decay, alpha2 | 1.44 +0.43 −0.26 | 1.18 ± 0.03 |
+| Spectral index, beta | 0.92 ± 0.19 | ≈ 0.75 (optical to X-ray) |
+| Closure relation after the break | ISM, ν_m < ν < ν_c, p = 2.84 ± 0.38 (0.1σ) | ISM, p ≈ 2.5 |
+
+The posterior is markedly asymmetric (least squares quotes t_b = 1.46 ± 0.45 d
+and alpha2 = 1.51 ± 0.27): with only one epoch before the break, the break time
+and the late slope trade off against each other, which the corner plot shows
+directly. Every quantity agrees with Kumar et al. within about 1σ; their
+light curve combines ZTF with several other telescopes and constrains the late
+decay far better. The spectral index from ZTF's three bands and the closure
+relations independently point to the same constant-density medium and
+electron index that Kumar et al. infer from the optical and X-ray data.
+
+<p align="center">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="figures/posterior_dark.png">
+  <img src="figures/posterior_light.png" alt="Corner plot of the posterior of the jet-break fit" width="70%">
+</picture>
+</p>
+
+**The late flares.** Kumar et al. report optical flares at 8.8 and 12.7 days.
+The five ZTF points between 8 and 14 days lie on average 1.8 ± 1.9 µJy above
+the extrapolated power law: consistent with flares of the published size, but
+ZTF's 30 s exposures are not deep enough to detect them on their own.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="figures/filmstrip_dark.png">
+  <img src="figures/filmstrip_light.png" alt="ZTF r-band cutouts of the afterglow fading over a month" width="100%">
+</picture>
+
+Per-epoch measurements are in [`results/ztf_photometry.csv`](results/ztf_photometry.csv)
+and every number above in [`results/summary.json`](results/summary.json).
+
+## Limitations
+
+- **One epoch before the break.** The ZTF survey visited the field 0.6 hours
+  after the burst and then not until 0.94 days, so the break time and the early
+  slope rest on a single point.
+- **Survey depth.** After about 5 days the afterglow falls below the depth of
+  30 s ZTF exposures; around the full moon at 21 to 25 days the frames are almost
+  two magnitudes shallower and have few calibration stars.
+- **No host galaxy** is detected at the position, so the reference images
+  contain only field stars; the subtraction is still needed for them and for
+  the zero-point consistency between epochs.

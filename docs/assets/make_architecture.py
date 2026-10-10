@@ -57,7 +57,12 @@ STAGES = [
         "title": "Photometric Calibration",
         "icon": "crosshair",
         "color": "sky",
-        "steps": ["WCS cross-match, one-to-one", "Robust weighted zero point", "Solved per frame"],
+        "steps": [
+            "WCS cross-match, one-to-one",
+            "Robust weighted zero point",
+            "Colour term at the burst's colour",
+            "Solved per frame",
+        ],
         "module": "zeropoint.py",
     },
     {
@@ -85,8 +90,14 @@ STAGES = [
         "title": "Model Fitting",
         "icon": "powerlaw",
         "color": "orange",
-        "steps": ["Single &amp; broken power law", "Joint g r i fit with β", "AIC / BIC comparison"],
-        "module": "fitting.py",
+        "steps": [
+            "Single &amp; broken power law",
+            "Joint g r i fit with β",
+            "Galactic &amp; host dust",
+            "MCMC posteriors",
+            "AIC / BIC comparison",
+        ],
+        "module": "fitting · extinction · mcmc",
     },
     {
         "title": "Physics",
@@ -117,15 +128,15 @@ VALIDATION = [
     ("check", "__TESTS__ tests, CI", "Python 3.10 to 3.13"),
 ]
 REAL = [
-    ("telescope", "GRB 221009A", "public ZTF images"),
-    ("crosshair", "Pan-STARRS1 zero points", "reference subtracted, PSF fit"),
-    ("check", "Matches published decay", "Liverpool Telescope, Laskar+23"),
+    ("telescope", "GRB 221009A", "ZTF behind 4 mag of dust"),
+    ("lightcurve", "GRB 210204A", "ZTF g r i, jet break"),
+    ("check", "Matches published results", "Laskar+23, O'Connor+23, Kumar+22"),
 ]
 ROADMAP = [
-    ("palette", "Colour terms"),
-    ("dust", "Extinction correction, β on real data"),
-    ("dice", "MCMC posteriors"),
-    ("telescope", "More public case studies"),
+    ("aperture", "Spatially varying PSF"),
+    ("telescope", "Multi-instrument light curves"),
+    ("physics", "Physical afterglow models"),
+    ("dust", "Near-infrared data"),
 ]
 
 # ----------------------------------------------------------------------------- icons (24x24, stroke)
@@ -280,7 +291,7 @@ def build_html(theme: str, kernel: str, psf: str, n_tests: int) -> str:
   <div class="box dashed" style="flex:2.15"><h4>{icon("flask", 26)} Validation &amp; Demo</h4><div class="items">{validation}</div>
     <div class="foot">synthetic.py · demo.py · tests/</div></div>
   <div class="box" style="flex:1.55"><h4>{icon("telescope", 26)} Real Data</h4><div class="items">{real}</div>
-    <div class="foot">case_studies/grb221009a</div></div>
+    <div class="foot">case_studies/</div></div>
   <div class="box" style="flex:1"><h4>{icon("rocket", 26)} Roadmap</h4><div class="road">{road}</div></div>
 </div>
 <div class="legend">{legend}</div>
@@ -337,7 +348,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--kernel", default="Bramich delta-basis kernel")
     parser.add_argument("--psf", default="Empirical PSF, deblended fit")
-    parser.add_argument("--tests", type=int, default=91)
+    parser.add_argument("--tests", type=int, default=106)
     parser.add_argument("--html-only", action="store_true")
     parser.add_argument("--out", type=Path, default=HERE)
     args = parser.parse_args()

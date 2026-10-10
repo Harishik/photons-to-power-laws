@@ -11,7 +11,11 @@ Runs the same reduction as the synthetic demo on real ZTF survey frames of the
    burst position in the reference image;
 2. rejects epochs that fail visual vetting, with the reason recorded;
 3. fits the temporal decay and compares it with independent Liverpool
-   Telescope photometry published by Laskar et al. (2023).
+   Telescope photometry published by Laskar et al. (2023);
+4. measures the optical spectral index beta from that griz photometry after
+   removing the Galactic extinction (averaged over the actual Liverpool
+   filter curves), with an MCMC posterior and the systematic error from the
+   uncertain E(B-V), and uses it for the colour term of the ZTF zero points.
 
 Everything runs offline from the files in ``data/`` (see ``fetch_data.py``).
 """
@@ -34,17 +38,36 @@ from astropy.coordinates import SkyCoord
 from astropy.table import Table
 from astropy.wcs import WCS, FITSFixedWarning
 
-from grb_afterglow import LightCurve, PipelineConfig, fit_single_power_law, reduce_frame
+from grb_afterglow import (
+    LightCurve,
+    PipelineConfig,
+    evaluate_closure_relations,
+    fit_lightcurve,
+    fit_single_power_law,
+    reduce_frame,
+)
 from grb_afterglow.calibration import load_fits
+from grb_afterglow.extinction import Bandpass, deredden, power_law_color
 from grb_afterglow.lightcurve import SECONDS_PER_DAY, flux_to_mag
+from grb_afterglow.mcmc import sample_posterior
 from grb_afterglow.pipeline import FrameResult, Template, header_time_since_trigger
-from grb_afterglow.plotting import plot_filmstrip, plot_lightcurve, plot_subtraction, plot_zeropoints
+from grb_afterglow.plotting import (
+    plot_filmstrip,
+    plot_lightcurve,
+    plot_posterior,
+    plot_sed,
+    plot_subtraction,
+    plot_zeropoints,
+)
 
 HERE = Path(__file__).resolve().parent
 TARGET = SkyCoord(288.26452 * u.deg, 19.77350 * u.deg)  # Swift/UVOT, GCN 32632
 TRIGGER_MJD = 59861.553460648  # Fermi/GBM, 2022-10-09 13:16:59 UT, GCN 32636
 LITERATURE_ALPHA = (1.42, 0.01)  # r'-band decay after 0.4 d, Laskar et al. (2023)
 FIT_TMIN_DAYS = 1.0
+EBV_MW = (1.32, 0.06)  # Schlafly & Finkbeiner (2011) map, as derived by Shrestha et al. (2023)
+LITERATURE_BETA = (0.68, 0.05)  # optical/IR after 1.7 d for E(B-V) = 1.32, O'Connor et al. (2023)
+SED_TMIN_DAYS = 1.7  # the interval of the O'Connor et al. measurement
 
 # Epochs rejected after visual inspection of the cutouts (see figures/filmstrip_*.png).
 REJECTED = {
@@ -58,12 +81,11 @@ SETTINGS = {
     "min_zp_snr": 10.0,
     "catalog_bands": {"zr": "r", "zg": "g"},
 }
-CONFIG = PipelineConfig(**SETTINGS, photometry="psf")  # with the reference image as template
 APERTURE = PipelineConfig(**SETTINGS, photometry="aperture")  # v0.2: aperture minus the reference flux
 
 
 def reduce(
-    path: Path, catalog: Table, band: str, *, config: PipelineConfig = CONFIG, template: Template | None = None
+    path: Path, catalog: Table, band: str, *, config: PipelineConfig, template: Template | None = None
 ) -> FrameResult:
     image, header = load_fits(path)
     with warnings.catch_warnings():
@@ -86,16 +108,108 @@ def reduce(
     )
 
 
-def load_literature(path: Path, band: str = "r") -> LightCurve:
+def load_literature(path: Path, band: str | None = "r") -> LightCurve:
+    """Liverpool Telescope photometry of Laskar et al. (2023): one band, or all of griz."""
     table = Table.read(path, format="ascii.csv", comment="#")
-    table = table[table["band"] == band]
+    if band is not None:
+        table = table[table["band"] == band]
     return LightCurve.from_magnitudes(
         np.asarray(table["time_days"]) * SECONDS_PER_DAY,
         table["mag"],
         table["mag_err"],
-        band,
+        np.asarray(table["band"], dtype=object),
         {"source": "Laskar et al. 2023, Liverpool Telescope"},
     )
+
+
+def fit_dereddened(lt: LightCurve, bandpasses: dict, ebv: float):
+    """Remove Galactic extinction (filter-averaged for the fitted beta, iterated) and fit t >= SED_TMIN_DAYS."""
+    pivots = {b: bp.pivot_nm for b, bp in bandpasses.items()}
+    beta = 0.5
+    for _ in range(4):
+        corrected = deredden(lt, ebv_mw=ebv, bandpasses=bandpasses, beta=beta)
+        late = corrected.subset(corrected.time_days >= SED_TMIN_DAYS)
+        fit = fit_lightcurve(late, "single", reference_band="r", wavelengths_nm=pivots, sys_err=0.02)
+        beta = fit.params["beta"]
+    return corrected, late, fit
+
+
+def measure_spectral_index(data: Path) -> dict:
+    """The optical spectral index from the Liverpool griz photometry, with statistical and dust errors."""
+    lt = load_literature(data / "laskar2023_liverpool.csv", band=None)
+    bandpasses = {b: Bandpass.from_file(data / "filters" / f"liverpool_ioo_{b}.dat", b) for b in "griz"}
+    pivots = {b: bp.pivot_nm for b, bp in bandpasses.items()}
+    corrected, late, fit = fit_dereddened(lt, bandpasses, EBV_MW[0])
+    beta_lo = fit_dereddened(lt, bandpasses, EBV_MW[0] - EBV_MW[1])[2].params["beta"]
+    beta_hi = fit_dereddened(lt, bandpasses, EBV_MW[0] + EBV_MW[1])[2].params["beta"]
+    beta_sys = 0.5 * abs(beta_hi - beta_lo)
+    observed = lt.subset(lt.time_days >= SED_TMIN_DAYS)
+    fit_observed = fit_lightcurve(observed, "single", reference_band="r", wavelengths_nm=pivots, sys_err=0.02)
+    posterior = sample_posterior(late, fit, sys_err=0.02, wavelengths_nm=pivots, n_steps=5000, burn=1000)
+    alpha, beta = posterior.interval("alpha"), posterior.interval("beta")
+    beta_err = 0.5 * (beta[2] - beta[1])
+    closure = evaluate_closure_relations(alpha[0], 0.5 * (alpha[2] - alpha[1]), beta[0], np.hypot(beta_err, beta_sys))
+    tension = abs(beta[0] - LITERATURE_BETA[0]) / np.sqrt(beta_err**2 + beta_sys**2 + LITERATURE_BETA[1] ** 2)
+    print(
+        f"Liverpool griz, t >= {SED_TMIN_DAYS:g} d: beta = {beta[0]:.2f} ± {beta_err:.2f} (stat) ± {beta_sys:.2f} "
+        f"(E(B-V) ± {EBV_MW[1]}) after removing E(B-V) = {EBV_MW[0]}; {fit_observed.params['beta']:.2f} without; "
+        f"O'Connor et al. 2023: {LITERATURE_BETA[0]} ± {LITERATURE_BETA[1]} ({tension:.1f}σ)"
+    )
+    for test in closure[:3]:
+        print(
+            f"  closure {test.relation.label:<32} alpha predicted {test.alpha_predicted:.2f} ± "
+            f"{test.alpha_predicted_err:.2f} vs {alpha[0]:.2f} ({test.n_sigma:.1f}σ)"
+        )
+    return {
+        "lightcurve": lt,
+        "corrected": corrected,
+        "late": late,
+        "observed_late": observed,
+        "fit": fit,
+        "posterior": posterior,
+        "pivots": pivots,
+        "summary": {
+            "t_min_days": SED_TMIN_DAYS,
+            "ebv_mw": list(EBV_MW),
+            "extinction_law": "Cardelli, Clayton & Mathis (1989), R_V = 3.1, averaged over the Liverpool IO:O filters",
+            "filter_pivot_nm": {b: round(v, 1) for b, v in pivots.items()},
+            "alpha": {"median": alpha[0], "lower": alpha[1], "upper": alpha[2]},
+            "beta": {"median": beta[0], "lower": beta[1], "upper": beta[2], "stat_err": beta_err, "sys_err": beta_sys},
+            "beta_without_extinction_correction": fit_observed.params["beta"],
+            "chi2": fit.chi2,
+            "dof": fit.dof,
+            "literature_beta": {
+                "value": LITERATURE_BETA[0],
+                "error": LITERATURE_BETA[1],
+                "source": "O'Connor et al. 2023, Science Advances 9, eadi1405",
+                "tension_sigma": float(tension),
+            },
+            "closure": [
+                {"relation": c.relation.label, "p": c.p, "p_err": c.p_err, "n_sigma": c.n_sigma} for c in closure[:3]
+            ],
+        },
+    }
+
+
+def measure_color_term(data: Path, catalog: Table, manifest: Table) -> tuple[float, float]:
+    """The ZTF r colour term against Pan-STARRS1 g - r: median of per-frame fits over the good r frames.
+
+    A colour term is a property of the instrument, so one value, measured from
+    every frame's calibration stars, is far better constrained than a fit to the
+    few dozen stars of a single frame.
+    """
+    fitted = PipelineConfig(**SETTINGS, photometry="psf", color_terms={"zr": ("g", "r")})
+    slopes = []
+    for entry in manifest:
+        name = str(entry["file"])
+        if entry["filtercode"] != "zr" or name in REJECTED:
+            continue
+        try:
+            slopes.append(reduce(data / "ztf" / name, catalog, "zr", config=fitted).zeropoint.color_term)
+        except RuntimeError:
+            continue
+    slopes = np.asarray(slopes, dtype=float)
+    return float(np.median(slopes)), float(1.2533 * np.std(slopes, ddof=1) / np.sqrt(slopes.size))
 
 
 def main() -> int:
@@ -111,10 +225,26 @@ def main() -> int:
     manifest = Table.read(args.data / "ztf_manifest.csv", format="ascii.csv")
     manifest = manifest[manifest["download"] == "ok"]
 
+    # The afterglow's spectral index sets the colour term of the ZTF zero points: behind this much dust it is
+    # far redder than the Pan-STARRS1 stars that calibrate it.
+    sed = measure_spectral_index(args.data)
+    target_gr = power_law_color(sed["summary"]["beta"]["median"], "g", "r", ebv_mw=EBV_MW[0])
+    slope, slope_err = measure_color_term(args.data, catalog, manifest)
+    config = PipelineConfig(
+        **SETTINGS,
+        photometry="psf",
+        color_terms={"zr": ("g", "r", slope, slope_err)},
+        target_color=target_gr,
+    )
+    print(
+        f"ZTF r colour term {slope:.3f} ± {slope_err:.3f} per mag of Pan-STARRS1 g - r, applied at the afterglow's "
+        f"g - r = {target_gr:.2f}"
+    )
+
     rows, frames, references, templates = [], {}, {}, {}
     for band in ("zr", "zg"):
         path = args.data / "ztf" / f"ztf_ref_{band}_refimg.fits"
-        templates[band] = Template.from_fits(path, fwhm_guess=CONFIG.fwhm_guess)
+        templates[band] = Template.from_fits(path, fwhm_guess=config.fwhm_guess)
         ref = reduce(path, catalog, band, config=APERTURE)
         references[band] = ref
         print(
@@ -126,7 +256,7 @@ def main() -> int:
         name, band = str(entry["file"]), str(entry["filtercode"])
         status = REJECTED.get(name, "ok")
         try:
-            frame = reduce(args.data / "ztf" / name, catalog, band, template=templates[band])
+            frame = reduce(args.data / "ztf" / name, catalog, band, config=config, template=templates[band])
             simple = reduce(args.data / "ztf" / name, catalog, band, config=APERTURE)
         except RuntimeError as exc:
             print(f"  {name}: skipped ({exc})")
@@ -258,15 +388,21 @@ def main() -> int:
             "error": LITERATURE_ALPHA[1],
             "source": "Laskar et al. 2023, ApJL, r'-band decay after 0.40 d",
         },
+        "spectral_index": sed["summary"],
+        "color_term": {
+            "zr_slope_per_mag_g_minus_r": slope,
+            "zr_slope_err": slope_err,
+            "afterglow_g_minus_r": target_gr,
+        },
     }
     with open(args.results / "summary.json", "w") as fh:
         json.dump(summary, fh, indent=2)
 
-    make_figures(args, frames, references, ztf_r, lt_r, simple_r, fit_joint, table)
+    make_figures(args, frames, references, ztf_r, lt_r, simple_r, fit_joint, table, sed)
     return 0
 
 
-def make_figures(args, frames, references, ztf_r, lt_r, simple_r, fit, table) -> None:
+def make_figures(args, frames, references, ztf_r, lt_r, simple_r, fit, table, sed) -> None:
     r_names = [str(n) for n in table["file"][table["band"] == "zr"] if str(n) in frames]
     panels = []
     ref = references["zr"]
@@ -333,6 +469,28 @@ def make_figures(args, frames, references, ztf_r, lt_r, simple_r, fit, table) ->
             title="ZTF r-band cutouts, 29 arcsec across, centred on the burst",
             savepath=args.figures / f"filmstrip_{theme}.png",
             panel_size=1.45,
+        )
+        plt.close(fig)
+        beta = sed["summary"]["beta"]
+        fig, _ = plot_sed(
+            sed["observed_late"],
+            sed["late"],
+            sed["fit"],
+            3.0,
+            wavelengths_nm=sed["pivots"],
+            fit_label=f"β = {beta['median']:.2f} ± {beta['stat_err']:.2f} (stat) ± {beta['sys_err']:.2f} (dust)",
+            title="GRB 221009A: the optical spectrum behind the Galactic plane",
+            subtitle=f"Liverpool griz (Laskar et al. 2023) after {SED_TMIN_DAYS:g} d, scaled to 3 d; E(B−V) = 1.32",
+            theme=theme,
+            savepath=args.figures / f"sed_{theme}.png",
+        )
+        plt.close(fig)
+        fig, _ = plot_posterior(
+            sed["posterior"],
+            ["alpha", "beta"],
+            title="Posterior of the decay and spectral indices",
+            theme=theme,
+            savepath=args.figures / f"posterior_{theme}.png",
         )
         plt.close(fig)
         r_frames = [frames[n] for n in r_names if REJECTED.get(n) is None]

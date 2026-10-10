@@ -18,6 +18,7 @@ from .closure import evaluate_closure_relations
 from .detection import estimate_background
 from .fitting import compare_models, fit_lightcurve
 from .lightcurve import AB_MAG_1UJY, SECONDS_PER_DAY
+from .mcmc import sample_posterior
 from .pipeline import FrameResult, PipelineConfig, PipelineResult, run_pipeline
 from .synthetic import generate_dataset
 
@@ -65,19 +66,19 @@ def run_demo(
     out.mkdir(parents=True, exist_ok=True)
     fig_dir.mkdir(parents=True, exist_ok=True)
 
-    log("[1/7] Simulating a g/r/i follow-up campaign with a host galaxy ...")
+    log("[1/8] Simulating a g/r/i follow-up campaign with a host galaxy ...")
     truth = generate_dataset(data_dir, seed=seed)
     raw = data_dir / "raw"
     bands = sorted({f["band"] for f in truth["frames"]}, key="gri".index)
 
-    log("[2/7] Building master bias and per-band flats ...")
+    log("[2/8] Building master bias and per-band flats ...")
     master_bias = build_master_bias([load_fits(p)[0] for p in sorted(raw.glob("bias_*.fits"))])
     master_flats = {
         b: build_master_flat([load_fits(p)[0] for p in sorted(raw.glob(f"flat_{b}_*.fits"))], master_bias=master_bias)
         for b in bands
     }
 
-    log("[3/7] Reducing science frames: template subtraction + PSF photometry ...")
+    log("[3/8] Reducing science frames: template subtraction + PSF photometry ...")
     catalog = Table.read(data_dir / "catalog.csv", format="ascii.csv")
     target = SkyCoord(truth["afterglow"]["ra"] * u.deg, truth["afterglow"]["dec"] * u.deg)
 
@@ -105,18 +106,22 @@ def run_demo(
     lc.save_csv(out / "lightcurve.csv")
     result.summary_table().write(out / "frames.csv", format="ascii.csv", overwrite=True)
 
-    log("[4/7] For comparison: aperture photometry without template subtraction ...")
+    log("[4/8] For comparison: aperture photometry without template subtraction ...")
     naive = run_pipeline(science_files, target, catalog, master_bias=master_bias, master_flats=master_flats)
     naive_fit = fit_lightcurve(naive.lightcurve, "broken", reference_band="r")
 
-    log("[5/7] Fitting single and broken power laws jointly across bands ...")
+    log("[5/8] Fitting single and broken power laws jointly across bands ...")
     single = fit_lightcurve(lc, "single", reference_band="r")
     broken = fit_lightcurve(lc, "broken", reference_band="r")
     comparison = compare_models(single, broken)
     log(comparison.summary())
     best = comparison.best
 
-    log("[6/7] Testing closure relations ...")
+    log("[6/8] Sampling the posterior of the jet-break fit (MCMC) ...")
+    posterior = sample_posterior(lc, broken, seed=seed)
+    log(posterior.summary())
+
+    log("[7/8] Testing closure relations ...")
     p, e = broken.params, broken.errors
     pre = evaluate_closure_relations(p["alpha1"], e["alpha1"], p["beta"], e["beta"])
     post = evaluate_closure_relations(p["alpha2"], e["alpha2"], p["beta"], e["beta"])
@@ -181,6 +186,21 @@ def run_demo(
             },
         },
         "injected_regime": ag["regime"],
+        "posterior": {
+            "method": "emcee ensemble sampler, flat priors",
+            "acceptance_fraction": posterior.acceptance_fraction,
+            **{
+                name: dict(zip(("median", "lower_68", "upper_68"), posterior.interval(name), strict=True))
+                for name in ("t_break_days", "alpha1", "alpha2", "beta")
+            },
+            "p_post_break": dict(
+                zip(
+                    ("median", "lower_68", "upper_68"),
+                    np.percentile(posterior.p(post[0].relation.key), [50, 15.865, 84.135]),
+                    strict=True,
+                )
+            ),
+        },
         "reduction": {"photometry": "psf", "template_subtraction": True},
         "host_galaxy_mag_r": truth["host"]["mag_r"] if truth["host"] else None,
         "without_subtraction": {
@@ -193,7 +213,7 @@ def run_demo(
     with open(out / "summary.json", "w") as fh:
         json.dump(summary, fh, indent=2)
 
-    log("[7/7] Drawing figures ...")
+    log("[8/8] Drawing figures ...")
     make_demo_figures(
         result,
         truth,
@@ -206,6 +226,7 @@ def run_demo(
         themes=themes,
         naive=naive,
         naive_fit=naive_fit,
+        posterior=posterior,
     )
     if animate:
         _make_animation(result, broken, fig_dir / "hero.gif", master_bias, master_flats)
@@ -246,6 +267,7 @@ def make_demo_figures(
     themes=("light", "dark"),
     naive: PipelineResult | None = None,
     naive_fit=None,
+    posterior=None,
 ):
     """Write the README figures for the synthetic demo."""
     from .plotting import (
@@ -253,6 +275,7 @@ def make_demo_figures(
         plot_filmstrip,
         plot_lightcurve,
         plot_pipeline_stages,
+        plot_posterior,
         plot_subtraction,
         plot_zeropoints,
     )
@@ -292,6 +315,23 @@ def make_demo_figures(
 
     for theme in themes:
         sfx = f"_{theme}"
+        if posterior is not None:
+            ag = truth["afterglow"]
+            fig, _ = plot_posterior(
+                posterior,
+                derived={"p": posterior.p("jet_slow")},
+                truths={
+                    "t_break_days": ag["t_break_s"] / SECONDS_PER_DAY,
+                    "alpha1": ag["alpha1"],
+                    "alpha2": ag["alpha2"],
+                    "beta": ag["beta"],
+                    "p": ag["p"],
+                },
+                title="Posterior of the jet-break fit",
+                theme=theme,
+                savepath=fig_dir / f"posterior{sfx}.png",
+            )
+            plt.close(fig)
         if sub_frame is not None:
             _, img = _calibrated(sub_frame.path, master_bias, master_flats, "r")
             d = sub_frame.difference

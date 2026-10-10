@@ -75,15 +75,17 @@ jet opening angle and the true, beaming-corrected energy.
    or PSF fitting (below).
 4. **Photometric calibration.** Detected stars are matched to a reference
    catalog (Pan-STARRS1 for real data) through the WCS, and the zero point is
-   solved per frame because the atmosphere changes between exposures.
+   solved per frame because the atmosphere changes between exposures. When the
+   instrument's bandpass differs from the catalog's, a colour term relates them
+   (below).
 5. **Image subtraction and forced photometry at the burst position.** A deep
    template is subtracted (below) and the afterglow is measured on the
    difference image, even after it has faded below the detection threshold.
    Those measurements can be zero or negative, which is why light curves are
    kept in flux density.
 6. **Fitting.** Flux-space weighted least squares for single and broken power
-   laws, compared with the Bayesian information criterion, then tested against
-   the closure relations.
+   laws, compared with the Bayesian information criterion, then the posterior
+   sampled with MCMC and the slopes tested against the closure relations.
 
 Every step propagates uncertainty, because the scientific statement is not
 `alpha = 1.4` but `alpha = 1.40 ± 0.02`. Only the version with an error bar can
@@ -117,13 +119,16 @@ leave a residual of every static source, the host included; the expected noise
 term is subtracted from the normal equations (Fuller 1987), a Laplacian
 penalty (Becker et al. 2012) keeps the solution stable, outliers such as the
 transient itself are clipped, and the photometric scale is refitted on bright
-pixels. This method was chosen over an Alard-Lupton Gaussian basis and ZOGY in
-a bake-off on synthetic pairs with known transients and on the real ZTF data
-(`dev/bakeoff/`): over synthetic pairs in four seeing configurations (science
-sharper, template sharper, matched, undersampled) its flux pulls have mean
-+0.02 and spread 1.13, the noise in the difference image is within 1 % of the
-ideal, and on the real ZTF epochs the fluxes agree with the Liverpool
-Telescope light curve (chi²/pt = 0.2).
+pixels. In a bake-off against an Alard-Lupton Gaussian basis and ZOGY on
+synthetic pairs with known transients and on the real ZTF data
+(`dev/bakeoff/`), Bramich and Alard-Lupton performed equivalently: over
+synthetic pairs in four seeing configurations (science sharper, template
+sharper, matched, undersampled) Bramich's flux pulls have mean +0.02 and
+spread 1.13, the noise in its difference images is within 1 % of the ideal,
+and on the real ZTF epochs the fluxes agree with the Liverpool Telescope light
+curve (chi²/pt = 0.2). Bramich was kept because its kernel needs no choice of
+basis; ZOGY, whose optimality assumes known PSFs, was noisier on the real
+data with analytic Moffat PSFs.
 
 The flux scale needs care when the *template* has the worse seeing, so that
 the science image is the one convolved and the difference image carries the
@@ -164,17 +169,62 @@ than added to the target, and the errors include a PSF-model term measured on
 the PSF stars. In the bake-off this gave a flux bias below 0.1 %, pulls with a
 robust spread of 1.02 (1.01 in crowded fields), and a median error of 9 % on
 faint stars against 30 % for apertures; on the ZTF frames the zero-point
-scatter drops from 0.075 to 0.055 mag. On a difference image the transient is
+scatter drops from 0.075 to 0.055 mag. A purely analytic Moffat PSF matched
+it on synthetic stars, which are Moffat profiles, but only reached 0.073 mag
+on the ZTF frames: real PSFs need the empirical part. On a difference image the transient is
 fitted with the same PSF and a local background, and its error comes from the
 scatter of identical fits at blank positions.
+
+## Colour terms
+
+A survey's filters never match the catalog's exactly, so stars of different
+colours need slightly different zero points: `m_cat = m_inst + ZP + C·colour`.
+The pipeline fits `C` and evaluates the zero point at the colour of the burst,
+not at the average colour of the calibration stars. Afterglows can be far
+redder than those stars: a `β = 0.4` power law behind the Galactic dust toward
+GRB 221009A has `g − r = 1.3`. A colour term is a property of the instrument,
+so it is best measured once from many frames (the case studies use the median
+of the per-frame fits) and then fixed: fitted to the few dozen stars of a
+single frame its uncertainty, extrapolated to a red burst, can exceed the
+correction itself.
 
 ## Extinction
 
 Dust in the Milky Way and in the host galaxy dims and reddens the afterglow. A
 temporal index is unaffected (extinction is constant in time), but a spectral
 index measured from optical colours is biased unless extinction is corrected.
-GRB 221009A lies close to the Galactic plane behind several magnitudes of
-extinction, which is why the case study measures alpha only.
+The Milky Way curve is that of Cardelli, Clayton & Mathis (1989) with
+`R_V = 3.1`, scaled by the colour excess `E(B − V)` of the Schlafly &
+Finkbeiner (2011) dust map. GRB host galaxies usually have dust like the Small
+Magellanic Cloud's, without the 2175 Å bump, so host extinction uses the SMC
+curve of Pei (1992) at the rest-frame wavelength; with several bands the fit
+can solve for the host's `A_V` alongside `β`.
+
+Behind a lot of dust two details matter. The correction should be averaged
+over each filter's transmission curve rather than taken at one wavelength,
+because the reddened source puts most of its photons in the red side of a
+broad band. And the wavelength must be the actual filter's: for GRB 221009A
+(`E(B − V) = 1.32`, `A_V ≈ 4.1`), using SDSS rather than Liverpool IO:O pivot
+wavelengths moves the g-band pivot by 13 nm and overcorrects g by 0.18 mag
+(i by 0.09), which lowers `β` by 0.08; evaluating the extinction at the pivot
+instead of averaging over the filter lowers it by another 0.08. Even done
+properly, `β` is then dominated by the uncertainty of the dust: ±0.06 in
+`E(B − V)` moves it by ±0.18, three times its statistical error.
+
+## Bayesian posteriors
+
+Least squares returns a best fit and a covariance matrix, an adequate summary
+only when the likelihood is close to Gaussian in the parameters. A jet break
+often violates that: with few points on one side of the break, its time is
+poorly constrained, asymmetric, and correlated with the decay indices. The
+pipeline therefore also samples the posterior with the affine-invariant
+ensemble sampler of Goodman & Weare (2010) (`emcee`, Foreman-Mackey et al.
+2013), using the same flux-space likelihood and flat priors (in the logarithm
+for the amplitude and the break time). Derived quantities such as `p` follow
+sample by sample. For the synthetic demo, where the data constrain everything
+well, posterior and least squares agree; for GRB 210204A, with one ZTF epoch
+before the break, the posterior of the break time and the late decay is
+clearly asymmetric.
 
 ## References
 
@@ -190,6 +240,14 @@ extinction, which is why the case study measures alpha only.
   image subtraction.
 - Fuller 1987, *Measurement Error Models* (Wiley): errors-in-variables regression.
 - Tonry et al. 2012, ApJ 750, 99: the Pan-STARRS1 photometric system.
+- Cardelli, Clayton & Mathis 1989, ApJ 345, 245: the Milky Way extinction curve.
+- Pei 1992, ApJ 395, 130: extinction curves of the Milky Way and the Magellanic Clouds.
+- Schlafly & Finkbeiner 2011, ApJ 737, 103: recalibrated Galactic dust map.
+- Goodman & Weare 2010, CAMCoS 5, 65; Foreman-Mackey et al. 2013, PASP 125, 306:
+  affine-invariant ensemble sampling and `emcee`.
+- O'Connor et al. 2023, Science Advances 9, eadi1405; Shrestha et al. 2023,
+  arXiv:2302.03829: the spectral index of, and the extinction toward, GRB 221009A.
+- Kumar et al. 2022, MNRAS, arXiv:2204.07587: the afterglow and late flares of GRB 210204A.
 - Bellm et al. 2019, PASP 131, 018002; Masci et al. 2019, PASP 131, 018003:
   the Zwicky Transient Facility and its data system.
 - Laskar et al. 2023, ApJL, [doi:10.3847/2041-8213/acbfad](https://doi.org/10.3847/2041-8213/acbfad):

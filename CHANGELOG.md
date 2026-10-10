@@ -4,6 +4,45 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [semantic versioning](https://semver.org/).
 
+## [0.4.0] - 2026-10-10
+
+The remaining roadmap items: colour terms, dust extinction, Bayesian
+posteriors, a second real-data case study, and the completed method bake-off.
+
+### Added
+- `grb_afterglow.extinction`: the Milky Way extinction curve of Cardelli,
+  Clayton & Mathis (1989) and the SMC curve of Pei (1992) for host galaxies
+  (both checked against `dust_extinction` to machine precision); `Bandpass`
+  transmission curves with pivot wavelengths and band-averaged extinction for
+  a power-law source; `deredden`; `power_law_color` for an afterglow's colour
+  behind dust.
+- Host-galaxy extinction in the fit: `fit_lightcurve(..., host_redshift=z)`
+  fits `host_av` alongside the spectral index.
+- `grb_afterglow.mcmc.sample_posterior`: posterior sampling of any power-law
+  fit with `emcee` (new dependency), with credible intervals and `p` derived
+  sample by sample; `plot_posterior` corner plots and `plot_sed`.
+- Colour terms: `PipelineConfig.color_terms` and `target_color`; zero points
+  evaluated at the burst's colour (`ZeroPoint.at_color`), with the slope's
+  uncertainty propagated; slopes can be fixed, e.g. after measuring them once
+  from many frames.
+- GRB 221009A: the optical spectral index from Liverpool griz photometry with
+  the Galactic extinction averaged over the IO:O filter curves,
+  0.41 ± 0.06 (stat) ± 0.18 (E(B−V)), within 1.4σ of O'Connor et al. (2023);
+  ZTF zero points with a colour term measured once from all frames.
+- A second case study, GRB 210204A, from 47 public ZTF g, r, i images: a jet
+  break, beta = 0.92 ± 0.19 and the ISM closure relation with
+  p = 2.84 ± 0.38, consistent with Kumar et al. (2022). Both case studies run
+  in CI.
+- The demo samples the posterior of the jet-break fit and draws its corner plot.
+- The three unfinished bake-off candidates were completed and scored:
+  an analytic Moffat PSF, Alard-Lupton and ZOGY subtraction (`dev/bakeoff/`).
+- 15 new tests (106 in total).
+
+### Fixed
+- Bake-off harness: the Alard-Lupton kernel was applied in the wrong
+  orientation for the real-data calibration, and ZOGY was scored through the
+  crowding-biased curve-of-growth fallback (chi²/pt 16.7 instead of 0.42).
+
 ## [0.3.0] - 2026-10-10
 
 Image subtraction and PSF photometry, the two "future extensions" of the
@@ -125,6 +164,7 @@ the first application to real telescope data.
 - Initial calibration, detection, aperture photometry, zero-point, light-curve,
   fitting, plotting, and synthetic-data modules, a demo script, and tests.
 
+[0.4.0]: https://github.com/Harishik/photons-to-power-laws/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Harishik/photons-to-power-laws/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Harishik/photons-to-power-laws/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Harishik/photons-to-power-laws/releases/tag/v0.1.0

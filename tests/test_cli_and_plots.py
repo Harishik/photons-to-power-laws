@@ -44,3 +44,25 @@ def test_figures_render(lc_csv, tmp_path, theme):
     )
     for name in ("lc.png", "cl.png", "fs.png"):
         assert (tmp_path / name).stat().st_size > 5_000
+
+
+def test_sed_and_posterior_figures_render(tmp_path):
+    from grb_afterglow.extinction import deredden
+    from grb_afterglow.mcmc import sample_posterior
+    from grb_afterglow.plotting import plot_posterior, plot_sed
+
+    t = np.repeat(np.geomspace(1e4, 1e6, 8), 3)
+    bands = np.array(["g", "r", "i"] * 8, dtype=object)
+    nu_ratio = np.select([bands == "g", bands == "r"], [617 / 481, 1.0], 617 / 752)
+    flux = 50 * (t / 1e5) ** -1.2 * nu_ratio**-0.7
+    observed = LightCurve(t, flux * 0.5, flux * 0.02, bands)
+    corrected = deredden(observed, ebv_mw=0.2)
+    fit = fit_lightcurve(corrected, "single", reference_band="r")
+    plot_sed(observed, corrected, fit, 1.0, title="SED", subtitle="test", savepath=tmp_path / "sed.png")
+    assert (tmp_path / "sed.png").stat().st_size > 0
+    post = sample_posterior(corrected, fit, n_walkers=12, n_steps=300, burn=100)
+    _, axes = plot_posterior(
+        post, derived={"p": post.p("ism_slow")}, truths={"beta": 0.7}, theme="dark", savepath=tmp_path / "post.png"
+    )
+    assert axes.shape == (3, 3)  # alpha, beta and the derived p
+    assert (tmp_path / "post.png").stat().st_size > 0

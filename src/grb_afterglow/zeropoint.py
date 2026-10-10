@@ -9,7 +9,7 @@ offset, the zero point, between the two scales:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 from astropy import units as u
@@ -35,6 +35,11 @@ class ZeroPoint:
         Standard deviation of the kept residuals, a measure of calibration noise.
     color_term
         Slope ``C`` of the colour dependence, if a colour term was fitted.
+    color_term_error
+        Uncertainty of ``color_term``.
+    reference_color
+        Colour at which ``value`` applies when a colour term was fitted
+        (0 unless the zero point was moved, see :meth:`at_color`).
     used
         Boolean mask over the input stars marking those kept by the clipping.
     """
@@ -45,6 +50,22 @@ class ZeroPoint:
     scatter: float
     color_term: float | None = None
     used: np.ndarray = field(default_factory=lambda: np.zeros(0, dtype=bool), repr=False)
+    color_term_error: float = 0.0
+    reference_color: float = 0.0
+    mean_color: float = 0.0
+
+    def at_color(self, color: float) -> ZeroPoint:
+        """The zero point for a source of the given catalog colour.
+
+        Without a colour term this is the same zero point. With one, ``value``
+        moves along the fitted slope and the slope's uncertainty is added for
+        the distance from the calibration stars' mean colour.
+        """
+        if self.color_term is None:
+            return self
+        value = self.value + self.color_term * (color - self.reference_color)
+        error = float(np.hypot(self.error, self.color_term_error * (color - self.mean_color)))
+        return replace(self, value=float(value), error=error, reference_color=float(color))
 
 
 def _unique_nearest(dist: np.ndarray, idx_meas: np.ndarray, max_sep: float):
@@ -116,6 +137,8 @@ def compute_zeropoint(
     instrumental_errs: np.ndarray | None = None,
     catalog_errs: np.ndarray | None = None,
     color: np.ndarray | None = None,
+    color_term: float | None = None,
+    color_term_error: float = 0.0,
     sigma: float = 3.0,
 ) -> ZeroPoint:
     """Solve a robust zero point from matched stars.
@@ -133,6 +156,10 @@ def compute_zeropoint(
         Optional per-star uncertainties used as weights.
     color
         Optional catalog colour (e.g. ``g - r``) for a colour-term fit.
+    color_term, color_term_error
+        A known colour-term slope (e.g. measured once from many frames of the
+        same instrument) and its uncertainty; with ``color`` given, the slope
+        is then fixed instead of fitted.
     sigma
         Clipping threshold.
     """
@@ -155,8 +182,11 @@ def compute_zeropoint(
     used = good.copy()
     slope: float | None = None
     for _ in range(10):
-        if col is not None and np.count_nonzero(used) >= 3:
-            slope, _ = np.polyfit(col[used], resid[used], 1)
+        if col is not None and color_term is not None:
+            slope = float(color_term)
+            model = resid - slope * col
+        elif col is not None and np.count_nonzero(used) >= 3:
+            slope = float(np.polyfit(col[used], resid[used], 1)[0])
             model = resid - slope * col
         else:
             model = resid
@@ -184,7 +214,18 @@ def compute_zeropoint(
     scatter = float(np.std(vals, ddof=1)) if n > 1 else 0.0
     formal = float(np.sqrt(1.0 / np.sum(1.0 / np.maximum(var[used], 1e-8)))) if np.any(var[used] > 0) else 0.0
     error = max(scatter / np.sqrt(n) if n > 1 else 0.0, formal)
-    return ZeroPoint(value, error, n, scatter, slope, used)
+    slope_err, mean_col = 0.0, 0.0
+    if slope is not None:
+        c = col[used]
+        mean_col = float(np.mean(c))
+        spread = float(np.sum((c - mean_col) ** 2))
+        if color_term is not None:
+            slope_err = float(color_term_error)
+        else:
+            slope_err = scatter / np.sqrt(spread) if spread > 0 else float("inf")
+        # The intercept at colour 0 is uncertain by the slope error times the mean colour as well.
+        error = float(np.hypot(error, slope_err * mean_col))
+    return ZeroPoint(value, error, n, scatter, slope, used, slope_err, 0.0, mean_col)
 
 
 def calibrate_magnitudes(
@@ -193,14 +234,14 @@ def calibrate_magnitudes(
     instrumental_errs: np.ndarray | None = None,
     color: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Apply a zero point: ``m = m_inst + ZP (+ C * colour)``.
+    """Apply a zero point: ``m = m_inst + ZP (+ C * (colour - reference colour))``.
 
     The zero-point uncertainty is added in quadrature to every star.
     """
     inst = np.asarray(instrumental_mags, dtype=float)
     cal = inst + zeropoint.value
     if zeropoint.color_term is not None and color is not None:
-        cal = cal + zeropoint.color_term * np.asarray(color, dtype=float)
+        cal = cal + zeropoint.color_term * (np.asarray(color, dtype=float) - zeropoint.reference_color)
     if instrumental_errs is None:
         cal_err = np.full_like(cal, zeropoint.error)
     else:

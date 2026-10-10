@@ -23,7 +23,8 @@ python case_studies/grb221009a/fetch_data.py   # optional: rebuild data/ from IR
   22 of the 27 epochs it lists.
 - **Pan-STARRS1 DR1** stars within 1.6′, for the zero points.
 - **Liverpool Telescope** griz photometry from Table 2 of Laskar et al. (2023),
-  used only for comparison.
+  for comparison and for the spectral index, with the system transmission
+  curves of the Liverpool IO:O filters from the SVO Filter Profile Service.
 
 Provenance and acknowledgements are in [`data/README.md`](data/README.md).
 
@@ -32,7 +33,8 @@ Provenance and acknowledgements are in [`data/README.md`](data/README.md).
 1. Each ZTF cutout goes through `grb_afterglow.reduce_frame`: background and
    source detection, seeing from isolated stars (typically within 0.1 px of
    the value in the ZTF header), WCS cross-match with Pan-STARRS1, and a
-   per-frame zero point from empirical-PSF photometry of the matched stars.
+   per-frame zero point from empirical-PSF photometry of the matched stars,
+   with a colour term (below).
 2. The deep pre-burst ZTF reference image (16 frames co-added, FWHM 2.2 px) is
    used as the template: it is resampled onto each epoch's pixel grid,
    PSF-matched with a Bramich (2008) kernel, and subtracted, which removes the
@@ -49,6 +51,18 @@ Provenance and acknowledgements are in [`data/README.md`](data/README.md).
 6. For comparison, the v0.2 measurement is repeated: aperture photometry of
    each epoch minus the flux in the same aperture on the reference image
    (6.5 ± 1.0 µJy in r).
+7. The optical spectral index comes from the Liverpool griz photometry after
+   1.7 days: the Galactic extinction (E(B−V) = 1.32 ± 0.06, Schlafly &
+   Finkbeiner 2011 as derived by Shrestha et al. 2023; Cardelli et al. 1989
+   curve) is averaged over each IO:O filter's transmission curve for the
+   fitted spectral index, and a power law with a common decay and spectral
+   index is fitted jointly to the four bands, then sampled with MCMC. The
+   systematic error is the change in beta for E(B−V) ± 0.06.
+8. ZTF r and Pan-STARRS1 r are different bandpasses, and behind this much dust
+   the afterglow (g − r = 1.34 for the measured beta) is far redder than the
+   calibration stars. The colour term, 0.141 ± 0.010 per magnitude of g − r, is
+   measured once as the median of the per-frame fits over all r frames, and
+   each frame's zero point is evaluated at the afterglow's colour.
 
 ## Results
 
@@ -62,19 +76,19 @@ Provenance and acknowledgements are in [`data/README.md`](data/README.md).
   <img src="figures/subtraction_light.png" alt="ZTF cutout at 1.6 days PSF-matched to the reference image, the reference, and the difference image with only the afterglow left" width="100%">
 </picture>
 
-Detections in ZTF r (difference imaging, PSF photometry), with the v0.2
-measurement for comparison:
+Detections in ZTF r (difference imaging, PSF photometry, colour term), with
+the v0.2 measurement for comparison:
 
 | Days after trigger | Flux density (µJy) | AB mag | S/N | v0.2: aperture − reference (µJy) | v0.2 S/N |
 |---:|---:|---:|---:|---:|---:|
-| 1.58 | 76.2 ± 3.6 | 19.20 | 21.0 | 69.8 ± 4.9 | 14.1 |
-| 3.57 | 21.1 ± 2.3 | 20.59 | 9.1 | 20.7 ± 3.3 | 6.4 |
-| 5.61 | 15.0 ± 2.2 | 20.96 | 6.7 | 10.3 ± 2.9 | 3.6 |
-| 10.56 | 10.4 ± 3.0 | 21.36 | 3.5 | 6.7 ± 3.5 | 1.9 |
+| 1.58 | 78.4 ± 3.9 | 19.16 | 20.1 | 69.8 ± 4.9 | 14.1 |
+| 3.57 | 21.8 ± 2.4 | 20.55 | 9.1 | 20.7 ± 3.3 | 6.4 |
+| 5.61 | 15.3 ± 2.3 | 20.94 | 6.7 | 10.3 ± 2.9 | 3.6 |
+| 10.56 | 10.9 ± 3.2 | 21.30 | 3.5 | 6.7 ± 3.5 | 1.9 |
 
 | Fit (t ≥ 1 d, r band) | alpha | chi²/dof |
 |---|---:|---:|
-| ZTF only, difference imaging + PSF | 1.34 ± 0.09 | 6.7/7 |
+| ZTF only, difference imaging + PSF | 1.34 ± 0.09 | 6.5/7 |
 | ZTF only, v0.2 (aperture − reference flux) | 1.53 ± 0.15 | 7.2/7 |
 | Liverpool Telescope only (refitted here) | 1.40 ± 0.02 | 15.7/17 |
 | ZTF + Liverpool | 1.40 ± 0.02 | 22.8/26 |
@@ -85,12 +99,37 @@ detection by a factor of 1.4 to 1.9, adds a fourth detection, and shrinks the
 uncertainty of the ZTF-only decay index by 40 %; both methods agree with the
 published value (0.9σ and 0.8σ), and refitting the Liverpool data with this
 package's fitter reproduces the published index. At the first three ZTF
-detections the ZTF magnitudes are within ±0.17 mag of the Liverpool power law
-(+0.00, +0.15, −0.17 mag), comparable to the per-point errors (0.05 to
-0.16 mag); the marginal 10.6-day point lies 1.7σ above it. Some offset is
-expected: ZTF r and the Liverpool r′ filter are different bandpasses, and this
-afterglow is much redder than the field stars that set the zero point, so a
-colour term would shift it.
+detections the ZTF magnitudes are within 0.19 mag of the Liverpool power law
+(−0.03, +0.11, −0.19 mag), comparable to the per-point errors (0.05 to
+0.16 mag); the marginal 10.6-day point lies 1.7σ above it. The colour term
+makes the afterglow 2 to 3 % brighter than a zero point at the stars' average
+colour would; the remaining differences are within the errors, and ZTF r and
+the Liverpool r′ filter are still different bandpasses.
+
+### The spectral index behind the Galactic plane
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="figures/sed_dark.png">
+  <img src="figures/sed_light.png" alt="Optical spectrum of GRB 221009A at 3 days before and after removing the Galactic extinction" width="80%">
+</picture>
+
+The Galactic dust removes 4.7 magnitudes in g and 2.0 in z: as observed, the
+spectrum would imply beta = 4.35. Removing E(B−V) = 1.32 gives
+
+| | beta |
+|---|---:|
+| This analysis, Liverpool griz after 1.7 d | 0.41 ± 0.06 (stat) ± 0.18 (E(B−V)) |
+| O'Connor et al. (2023), optical/IR after 1.7 d, same E(B−V) | 0.68 ± 0.05 |
+
+which agree at 1.4σ. The systematic error dominates: at this extinction a
+±0.06 change in E(B−V) moves beta by ±0.18. The details of the correction
+matter at the same level: with SDSS instead of the actual IO:O pivot
+wavelengths, or with the extinction evaluated at the pivot instead of
+averaged over each filter, beta comes out 0.08 lower each time. The posterior
+of the decay and spectral indices is in
+[`figures/posterior_light.png`](figures/posterior_light.png). With beta this
+uncertain the closure relations cannot single out an emission regime: three
+of them agree with alpha = 1.37 within 1.5σ.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="figures/filmstrip_dark.png">
@@ -119,8 +158,10 @@ and the numbers above in [`results/summary.json`](results/summary.json).
   fluxes came out twice too high. The pipeline instead carries the science
   PSF through the matching kernel (see
   [`docs/science_background.md`](../../docs/science_background.md)).
-- **No colour term or extinction correction.** Fine for the decay index, which
-  is unaffected by constant offsets, but it is why this case study does not
-  measure the spectral index beta.
+- **The spectral index is limited by the dust.** E(B−V) toward this
+  low-latitude field is itself uncertain (Shrestha et al. 2023 discuss values
+  from 0.71 to 1.32), and the correction assumes Milky Way dust with
+  R_V = 3.1. Near-infrared photometry, far less affected by the dust, would
+  constrain beta much better than griz alone.
 - **g band.** The g-band frames are too shallow for a detection given the
   extinction, and several have too few calibration stars to be calibrated.

@@ -4,6 +4,69 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [semantic versioning](https://semver.org/).
 
+## [0.6.0] - 2026-10-12
+
+The two next steps of 0.5: X-ray and radio data in the physical fits, and
+nested sampling for posteriors with several modes.
+
+### Added
+- `grb_afterglow.nested`: nested sampling with `nautilus` (Lange 2023;
+  optional extra `[nested]`) for power-law and physical fits.
+  - `nested_posterior` returns equal-weight samples and the evidence, with the
+    likelihood's normalisation, so fits with different error floors compare too.
+  - `bayes_factor`; `Prior` (uniform, normal, truncated normal, sine) to
+    replace any default prior.
+  - Runs on several cores (`n_jobs`). It warns when `max_calls` stops it
+    before it converges.
+  - `nautilus` was chosen over `dynesty` and `UltraNest` on the GRB 210204A
+    jet break, where it reproduced an independent evidence to 0.01.
+    - `dynesty`'s default sampler had not finished after five hours.
+    - `UltraNest`'s default needed about 14 times more likelihood calls.
+    - The faster settings of both gave break times that moved by up to 0.5 d
+      with the random seed.
+- X-ray and radio data in physical fits:
+  - Bands named after their frequency (`"xrt:3keV"`, `"gmrt:1254.6MHz"`).
+  - Error floors per band or instrument: `fit_afterglow(..., sys_err={"default": 0.02, "gmrt": 0.15})`
+    and `floor_fractions`.
+  - Calibration offsets with Gaussian priors in physical fits, as in power-law
+    fits: one flux-scale uncertainty shared by all of an instrument's points.
+  - `AfterglowModel(self_absorption=True)`: synchrotron self-absorption with
+    the frequency of Granot & Sari (2002), scaled with `xi_N` as `afterglowpy` is,
+    which its documented spectra leave out; `self_absorption_frequency`.
+- `plot_broadband`, a light curve from X-rays to radio with one model per
+  band; `plot_posterior(compare=...)` overlays a second posterior.
+- GRB 210204A:
+  - `fetch_xray.py` and `data/swift_xrt.csv`: the Swift/XRT light curve from
+    the UK Swift Science Data Centre, as the unabsorbed flux density at
+    3 keV, where the conversion hardly depends on the uncertain absorption.
+  - `data/kumar2022_radio.csv`: the three uGMRT detections of Kumar et al.
+    (2022, Table A4), with the caveats of the transcription.
+  - `nested_break.py`: nested sampling reproduces the grid posterior of the
+    jet break (t_b = 0.97 [0.07, 1.84] d against 0.95 [0.07, 1.82] d). The
+    evidence for the break over a single power law is ln B = 39.8.
+  - `broadband_model.py`: a top-hat jet fitted to ZTF, Swift/XRT and uGMRT
+    data together.
+    - For narrow jets (θ_core up to 0.1 rad), against ZTF alone, the 68 %
+      intervals shrink by factors of 6.7 in density, 3.3 in epsilon_B, 2.6
+      in energy and 4 in p, to n0 = 10^(−5.51 ± 0.32) cm⁻³ and p = 2.35 ± 0.03.
+    - A narrow jet seen almost on axis and jets 0.3 to 0.8 rad wide (up to
+      the θ_obs prior bound) seen near their edge fit equally well
+      (ln B = −0.33 ± 0.01, narrow against wide). Under the default prior the
+      wide jets hold 96 % of the posterior only because they span 94 % of the
+      θ_core prior.
+    - The self-absorption frequency, 3 to 12 MHz, is far below the radio bands.
+
+### Changed
+- `sys_err` of `fit_afterglow`, `sample_afterglow` and `nested_posterior`
+  takes a mapping by band name, instrument and `"default"`.
+- `Posterior` carries `log_evidence`, `log_evidence_err` and `n_calls`;
+  `summary()` reports ln Z and its error for nested sampling.
+- `sample_afterglow` uses the fit's error floors (`AfterglowFit.sys_err`)
+  unless `sys_err` is given (it used none by default before), and its prior
+  includes the fit's Gaussian priors on calibration offsets.
+- CI installs the `[nested]` extra and runs short versions of both new
+  GRB 210204A scripts.
+
 ## [0.5.0] - 2026-10-11
 
 The four roadmap items of 0.4: light curves from several instruments through
@@ -245,6 +308,7 @@ the first application to real telescope data.
 - Initial calibration, detection, aperture photometry, zero-point, light-curve,
   fitting, plotting, and synthetic-data modules, a demo script, and tests.
 
+[0.6.0]: https://github.com/Harishik/photons-to-power-laws/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/Harishik/photons-to-power-laws/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/Harishik/photons-to-power-laws/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Harishik/photons-to-power-laws/compare/v0.2.0...v0.3.0

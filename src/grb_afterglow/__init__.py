@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 __license__ = "MIT"
 
 from .calibration import build_master_bias, build_master_flat, calibrate_frame, combine_frames

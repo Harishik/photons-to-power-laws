@@ -18,9 +18,16 @@ randomly oriented jets.
 A word of caution, demonstrated by the GRB 210204A case study: optical data
 alone measure the spectral and temporal slopes and the time of the jet break,
 which is three constraints on seven parameters. Energy, density and
-``epsilon_B`` then trade off against each other along a ridge; constraining
-them needs X-ray and radio data. Fix what the data cannot measure, or read
-the posterior as a map of that degeneracy.
+``epsilon_B`` then trade off against each other along a ridge, and the
+posterior can have separate modes. X-ray and radio data constrain other
+combinations of them. Bands named after their frequency (``"xrt:3keV"``,
+``"gmrt:1.25GHz"``, see :func:`grb_afterglow.filters.tagged_frequency_hz`) put
+such measurements in the same light curve; ``calibration_offsets`` gives an
+instrument's common flux-scale uncertainty (an X-ray absorption correction,
+say) a prior; ``sys_err`` takes an error floor per instrument; and
+``AfterglowModel(self_absorption=True)`` adds the synchrotron self-absorption
+that matters at radio frequencies. For posteriors with several modes, sample
+with :func:`grb_afterglow.nested.nested_posterior`.
 """
 
 from __future__ import annotations
@@ -30,10 +37,19 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from .fitting import OFFSET_PREFIX, offset_key
 from .lightcurve import LightCurve
 from .spectral import SpectralModel
 
-__all__ = ["DEFAULTS", "PRIORS", "AfterglowFit", "AfterglowModel", "fit_afterglow", "sample_afterglow"]
+__all__ = [
+    "DEFAULTS",
+    "PRIORS",
+    "AfterglowFit",
+    "AfterglowModel",
+    "fit_afterglow",
+    "floor_fractions",
+    "sample_afterglow",
+]
 
 # Parameter name -> afterglowpy keyword; names starting with "log10_" are passed as 10 ** value.
 _KEYWORDS = {
@@ -103,6 +119,14 @@ class AfterglowModel:
         How band names map to frequencies, as in
         :func:`~grb_afterglow.fitting.fit_lightcurve`: the model is evaluated at
         each band's pivot (registry bands) or effective wavelength.
+    self_absorption
+        Multiply the flux by the synchrotron self-absorption factor
+        ``(1 - exp(-tau)) / tau``, ``tau = (nu / nu_sa) ** (-5/3)``, which turns
+        the ``nu^(1/3)`` spectrum below ``nu_m`` into ``nu^2`` below ``nu_sa``.
+        afterglowpy's documented spectra leave self-absorption out, which only
+        matters at radio frequencies; ``nu_sa`` is that of Granot & Sari (2002,
+        ApJ 568, 820, Table 2, break 1) for slow cooling with ``nu_sa < nu_m``
+        in a uniform medium, see :meth:`self_absorption_frequency`.
     """
 
     redshift: float
@@ -112,6 +136,7 @@ class AfterglowModel:
     r_v: float = 3.1
     wavelengths_nm: Mapping[str, float] | None = None
     bandpasses: object = True
+    self_absorption: bool = False
     _spectral: SpectralModel | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -146,7 +171,40 @@ class AfterglowModel:
         """Flux density in microjansky at observer times ``t_s`` (s) and frequencies ``nu_hz``, before dust."""
         grb = _afterglowpy()
         t, nu = np.broadcast_arrays(np.atleast_1d(np.asarray(t_s, dtype=float)), np.asarray(nu_hz, dtype=float))
-        return 1e3 * grb.fluxDensity(t, nu, **self.afterglowpy_kwargs(params))
+        flux = 1e3 * grb.fluxDensity(t, nu, **self.afterglowpy_kwargs(params))
+        if self.self_absorption:
+            tau = (nu / self.self_absorption_frequency(params)) ** (-5.0 / 3.0)
+            flux = flux * np.where(tau > 1e-8, -np.expm1(-tau) / np.maximum(tau, 1e-300), 1.0)
+        return flux
+
+    def self_absorption_frequency(self, params: Mapping[str, float]):
+        """Observed self-absorption frequency ``nu_sa`` (Hz) of Granot & Sari (2002), Table 2, break 1.
+
+        Parameter values may be arrays (posterior samples), giving an array.
+
+        For slow cooling with ``nu_sa < nu_m`` in a uniform medium,
+        ``nu_sa = 1.24e9 (p-1)^(3/5) (3p+2)^(-3/5) (1+z)^-1 epsbar_e^-1
+        eps_B^(1/5) n0^(3/5) E52^(1/5)`` Hz, constant in time, with
+        ``epsbar_e = eps_e (p-2)/(p-1)``. With only a fraction ``xi_N`` of the
+        electrons accelerated, the parameters enter as ``eps_e / xi_N``,
+        ``eps_B / xi_N``, ``n0 xi_N`` and ``E0 xi_N`` (the scaling under which
+        afterglowpy's flux is unchanged; Eichler & Waxman 2005, ApJ 627, 861), which
+        multiplies ``nu_sa`` by ``xi_N^(8/5)``. It is an estimate: afterglowpy's
+        cooling frequency is not that of Granot & Sari, and the expression does
+        not hold after the jet break or when ``nu_sa > nu_m``.
+        """
+        v = {k: np.asarray(x, dtype=float) for k, x in {**DEFAULTS, **params}.items()}
+        p = v["p"]
+        eps_bar = 10.0 ** v["log10_eps_e"] * (p - 2.0) / (p - 1.0)
+        nu = (
+            1.24e9
+            * ((p - 1.0) / (3.0 * p + 2.0)) ** 0.6
+            / (1.0 + self.redshift)
+            / eps_bar
+            * 10.0 ** (0.2 * v["log10_eps_B"] + 0.6 * v["log10_n0"] + 0.2 * (v["log10_E0"] - 52.0))
+            * v["xi_N"] ** 1.6
+        )
+        return float(nu) if nu.ndim == 0 else nu
 
     def band_wavelength_nm(self, band: str) -> float:
         return self._spectral.grid(str(band)).effective_nm
@@ -186,6 +244,8 @@ class AfterglowFit:
     dof: int
     covariance: np.ndarray = field(repr=False)
     bounds: dict[str, tuple[float, float]] = field(default_factory=dict, repr=False)
+    priors: dict[str, float] = field(default_factory=dict)
+    sys_err: float | Mapping[str, float] = 0.0
 
     spectral = None  # plotting treats the fit like a power-law fit with its own band model
     nu_ref = None
@@ -198,13 +258,30 @@ class AfterglowFit:
     def reduced_chi2(self) -> float:
         return float(self.chi2 / self.dof) if self.dof > 0 else float("nan")
 
+    @property
+    def offsets(self) -> dict[str, float]:
+        """Calibration offsets (mag) by instrument or band; positive means that instrument measures fainter."""
+        return {k[len(OFFSET_PREFIX) :]: v for k, v in self.params.items() if k.startswith(OFFSET_PREFIX)}
+
     def predict_band(self, t, band) -> np.ndarray:
-        return self.model.predict_band(t, band, self.params)
+        """The model of measurements in ``band`` at times ``t`` (s), including the band's calibration offset."""
+        t = np.atleast_1d(np.asarray(t, dtype=float))
+        return self.evaluator(np.broadcast_to(np.asarray(band, dtype=object), t.shape))(t, self.params)
 
     def evaluator(self, bands):
+        """A fast ``f(t, params)`` for measurements in ``bands``, with calibration offsets applied."""
+        bands = np.atleast_1d(np.asarray(bands, dtype=object)).astype(str)
         model = self.model.evaluator(bands)
+        keys = [offset_key(b, self.offsets) for b in bands]
+        names = [OFFSET_PREFIX + k if k else None for k in keys]
         fixed = dict(self.params)
-        return lambda t, params: model(t, {**fixed, **params})
+
+        def evaluate(t, params):
+            p = {**fixed, **params}
+            dm = np.array([p[n] if n else 0.0 for n in names])
+            return model(t, p) * 10 ** (-0.4 * dm)
+
+        return evaluate
 
     def summary(self) -> str:
         parts = [f"{n}={self.params[n]:.4g}±{self.errors.get(n, float('nan')):.2g}" for n in self.free]
@@ -215,12 +292,27 @@ class AfterglowFit:
         )
 
 
-def _data(lc: LightCurve, sys_err: float):
+def floor_fractions(bands, sys_err: float | Mapping[str, float]) -> np.ndarray:
+    """Fractional systematic error per measurement: one value, or by band name, then instrument, then "default"."""
+    bands = np.atleast_1d(np.asarray(bands, dtype=object)).astype(str)
+    if not isinstance(sys_err, Mapping):
+        return np.full(bands.size, float(sys_err))
+    default = float(sys_err.get("default", 0.0))
+
+    def lookup(band):
+        key = offset_key(band, sys_err)
+        return float(sys_err[key]) if key else default
+
+    return np.array([lookup(b) for b in bands])
+
+
+def _data(lc: LightCurve, sys_err: float | Mapping[str, float]):
     t, y, e = (np.asarray(a, dtype=float) for a in (lc.time, lc.flux, lc.flux_err))
+    bands = np.asarray(lc.band, dtype=object).astype(str)
     keep = np.isfinite(t) & np.isfinite(y) & np.isfinite(e) & (t > 0) & (e > 0)
-    if sys_err > 0:
-        e = np.hypot(e, sys_err * np.abs(y))
-    return t[keep], y[keep], e[keep], np.asarray(lc.band, dtype=object)[keep].astype(str)
+    floor = floor_fractions(bands, sys_err)
+    e = np.where(floor > 0, np.hypot(e, floor * np.abs(y)), e)
+    return t[keep], y[keep], e[keep], bands[keep]
 
 
 def _check(model: AfterglowModel, free: Sequence[str], fixed: Mapping[str, float]) -> None:
@@ -266,7 +358,8 @@ def fit_afterglow(
     fixed: Mapping[str, float] | None = None,
     start: Mapping[str, float] | Sequence[Mapping[str, float]] | None = None,
     bounds: Mapping[str, tuple[float, float]] | None = None,
-    sys_err: float = 0.0,
+    sys_err: float | Mapping[str, float] = 0.0,
+    calibration_offsets: Mapping[str, float | None] | None = None,
 ) -> AfterglowFit:
     """Least-squares fit of a physical afterglow model.
 
@@ -291,29 +384,55 @@ def fit_afterglow(
     bounds
         Bounds overriding :data:`PRIORS`.
     sys_err
-        Fractional systematic error added in quadrature.
+        Fractional systematic error added in quadrature: one value, or a
+        mapping by band name or instrument (``{"ztf": 0.02, "gmrt": 0.15}``, with
+        an optional ``"default"``). Use it for errors independent from point to
+        point; a calibration shared by all of an instrument's points belongs in
+        ``calibration_offsets``.
+    calibration_offsets
+        ``{instrument: prior}``: a zero-point offset (mag) for each listed
+        instrument (or band), fitted with a Gaussian prior of that width in
+        magnitudes, or None for a flat prior within ±1 mag. The offsets are
+        parameters ``offset_<instrument>``, as in
+        :func:`~grb_afterglow.fitting.fit_lightcurve`; a positive offset means the
+        instrument measures the source fainter than the model, as when an X-ray
+        flux scale depends on an uncertain absorption correction.
     """
     from scipy.optimize import least_squares
 
     fixed = dict(fixed or {})
     free = list(free)
     _check(model, free, fixed)
-    limits = {**PRIORS, **(bounds or {})}
     t, y, e, bands = _data(lc, sys_err)
+    priors = dict(calibration_offsets or {})
+    used = {offset_key(b, priors) for b in bands} - {None}
+    offset_names = [OFFSET_PREFIX + k for k in priors if k in used]
+    limits = {**PRIORS, **{n: (-1.0, 1.0) for n in offset_names}, **(bounds or {})}
+    free = [*free, *offset_names]
+    sigma = {OFFSET_PREFIX + k: float(v) for k, v in priors.items() if v is not None and OFFSET_PREFIX + k in free}
+    if any(v <= 0 for v in sigma.values()):
+        raise ValueError("Calibration offset priors must be positive (or None for no prior).")
     if t.size <= len(free):
         raise ValueError("More free parameters than data points.")
-    evaluate = model.evaluator(bands)
+    fit_shell = AfterglowFit(model, {**DEFAULTS, **fixed, **dict.fromkeys(offset_names, 0.0)}, free, {}, 0.0, 0, None)
+    evaluate = fit_shell.evaluator(bands)
     base = {**DEFAULTS, **fixed}
     lo = np.array([limits[n][0] for n in free])
     hi = np.array([limits[n][1] for n in free])
     starts = [start] if start is None or isinstance(start, Mapping) else list(start)
+    prior_index = np.array([free.index(n) for n in sigma], dtype=int)
+    prior_sigma = np.array(list(sigma.values()))
+
+    def data_residuals(x):
+        return (y - evaluate(t, {**base, **dict(zip(free, x, strict=True))})) / e
 
     def residuals(x):
-        return (y - evaluate(t, {**base, **dict(zip(free, x, strict=True))})) / e
+        r = data_residuals(x)
+        return np.concatenate([r, x[prior_index] / prior_sigma]) if prior_index.size else r
 
     res = None
     for guess in starts:
-        x0 = np.array([{**base, **(guess or {})}[n] for n in free], dtype=float)
+        x0 = np.array([{**base, **dict.fromkeys(offset_names, 0.0), **(guess or {})}[n] for n in free], dtype=float)
         x0 = np.clip(x0, lo + 1e-6 * (hi - lo), hi - 1e-6 * (hi - lo))
         # afterglowpy integrates numerically: finite differences need steps well above its tolerance.
         trial = least_squares(
@@ -330,10 +449,12 @@ def fit_afterglow(
         params,
         free,
         {n: float(v) for n, v in zip(free, err, strict=True)},
-        float(2 * res.cost),
+        float(np.sum(data_residuals(res.x) ** 2)),
         int(t.size - len(free)),
         cov,
         {n: tuple(limits[n]) for n in free},
+        {n[len(OFFSET_PREFIX) :]: v for n, v in sigma.items()},
+        sys_err,
     )
 
 
@@ -345,36 +466,39 @@ def sample_afterglow(
     n_steps: int = 3000,
     burn: int = 1000,
     thin: int = 5,
-    sys_err: float = 0.0,
+    sys_err: float | Mapping[str, float] | None = None,
     seed: int = 0,
 ):
     """Sample the posterior of a physical model's free parameters with ``emcee``.
 
-    The likelihood is the fit's Gaussian likelihood in flux density, the priors
-    are uniform within the fit's bounds (in the parameters' own, mostly
-    logarithmic, units) and ``∝ sin(theta_obs)`` for the viewing angle. Walkers
-    start around the least-squares solution. Returns a
-    :class:`~grb_afterglow.mcmc.Posterior`.
+    The likelihood is the fit's Gaussian likelihood in flux density (with the
+    fit's error floors unless ``sys_err`` is given), the priors are uniform
+    within the fit's bounds (in the parameters' own, mostly logarithmic,
+    units), ``∝ sin(theta_obs)`` for the viewing angle, and the fit's Gaussian
+    priors on calibration offsets. Walkers start around the least-squares
+    solution. Returns a :class:`~grb_afterglow.mcmc.Posterior`. For multimodal
+    posteriors and the evidence, see :func:`grb_afterglow.nested.nested_posterior`.
     """
     import emcee
 
     from .mcmc import Posterior
 
-    t, y, e, bands = _data(lc, sys_err)
+    t, y, e, bands = _data(lc, fit.sys_err if sys_err is None else sys_err)
     evaluate = fit.evaluator(bands)
     names = list(fit.free)
     lo = np.array([fit.bounds[n][0] for n in names])
     hi = np.array([fit.bounds[n][1] for n in names])
     j_obs = names.index("theta_obs") if "theta_obs" in names else None
+    gaussian = [(names.index(OFFSET_PREFIX + k), s) for k, s in fit.priors.items()]
 
     def log_prob(x):
         if np.any(x < lo) or np.any(x > hi):
             return -np.inf
-        prior = 0.0
+        prior = -0.5 * sum((x[j] / s) ** 2 for j, s in gaussian)
         if j_obs is not None:
             if x[j_obs] <= 0:
                 return -np.inf
-            prior = float(np.log(np.sin(x[j_obs])))
+            prior += float(np.log(np.sin(x[j_obs])))
         model = evaluate(t, dict(zip(names, x, strict=True)))
         if not np.all(np.isfinite(model)):
             return -np.inf

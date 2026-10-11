@@ -95,15 +95,15 @@ STAGES = [
             "Joint fit across instruments, β",
             "Through 35 filter curves",
             "Galactic &amp; host dust",
-            "MCMC or grid posteriors",
+            "MCMC, grid or nested sampling",
         ],
-        "module": "fitting · spectral · mcmc",
+        "module": "fitting · spectral · mcmc · nested",
     },
     {
         "title": "Physics",
         "icon": "physics",
         "color": "rose",
-        "steps": ["Closure relations", "Electron index p", "ISM or wind, jet break", "afterglowpy jet models"],
+        "steps": ["Closure relations", "Electron index p", "ISM or wind, jet break", "Jet models, X-ray to radio"],
         "module": "closure · physical",
     },
     {
@@ -129,12 +129,12 @@ VALIDATION = [
 ]
 REAL = [
     ("telescope", "GRB 221009A", "ZTF + near-IR, 4 mag of dust"),
-    ("lightcurve", "GRB 210204A", "ZTF g r i, jet break"),
+    ("lightcurve", "GRB 210204A", "ZTF + XRT + uGMRT, jet break"),
     ("check", "Matches published results", "Laskar+23, O'Connor+23, Kumar+22"),
 ]
 ROADMAP = [
-    ("telescope", "X-ray &amp; radio in jet fits"),
-    ("dice", "Nested sampling"),
+    ("telescope", "X-ray counts, Poisson likelihood"),
+    ("dice", "Structured jets, by evidence"),
 ]
 
 # ----------------------------------------------------------------------------- icons (24x24, stroke)
@@ -346,7 +346,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--kernel", default="Bramich delta-basis kernel")
     parser.add_argument("--psf", default="Empirical PSF, deblended fit")
-    parser.add_argument("--tests", type=int, default=126)
+    parser.add_argument("--tests", type=int, default=134)
     parser.add_argument("--html-only", action="store_true")
     parser.add_argument("--out", type=Path, default=HERE)
     args = parser.parse_args()

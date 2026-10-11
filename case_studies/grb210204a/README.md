@@ -14,6 +14,7 @@ Unlike GRB 221009A, this field is far from the Galactic plane
 ```bash
 python case_studies/grb210204a/analyze.py      # runs offline on the committed data (~2 minutes)
 python case_studies/grb210204a/fetch_data.py   # optional: rebuild data/ from IRSA and MAST
+python case_studies/grb210204a/fetch_xray.py   # optional: rebuild data/swift_xrt.csv from the UK Swift Science Data Centre
 ```
 
 ## Method
@@ -100,6 +101,37 @@ therefore integrated on a grid instead:
 </picture>
 </p>
 
+**The same posterior by nested sampling, and the evidence for the break.**
+`nested_break.py` samples the jet-break fit with nested sampling
+(`grb_afterglow.nested`, using `nautilus`), which needs no grid. It finds both
+modes on its own and agrees with the grid integration:
+
+| 68 % intervals | Nested sampling | Grid |
+|---|---:|---:|
+| Break time (d) | 0.97 [0.07, 1.84] | 0.95 [0.07, 1.82] |
+| Early decay, alpha1 | 0.50 [−0.94, 0.55] | 0.50 [−0.96, 0.55] |
+| Late decay, alpha2 | 1.29 [1.13, 1.77] | 1.28 [1.12, 1.75] |
+| Spectral index, beta | 0.93 [0.74, 1.13] | 0.93 [0.74, 1.12] |
+| P(break before 0.5 d) | 0.39 | 0.40 |
+
+Nested sampling also returns the evidence of each model. The broken power law
+has ln Z = −55.42 ± 0.01 and the single one −95.19 ± 0.01, a Bayes factor of
+ln B = 39.8 (10¹⁷ to 1) for the break. The ΔBIC of 83 says the same; the
+evidence gets there by averaging over the whole posterior, including the
+early-break mode, instead of from the best fit alone.
+
+```bash
+pip install -e ".[nested]"
+python case_studies/grb210204a/nested_break.py --n-jobs 3   # about 11 minutes of sampling
+```
+
+<p align="center">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="figures/nested_break_dark.png">
+  <img src="figures/nested_break_light.png" alt="Corner plot of the jet-break posterior from nested sampling, with the grid posterior overlaid" width="70%">
+</picture>
+</p>
+
 **The late flares.** Kumar et al. report optical flares at 8.8 and 12.7 days.
 The five ZTF points between 8 and 14 days lie on average 1.8 ± 1.9 µJy above
 the extrapolated power law: consistent with flares of the published size, but
@@ -177,6 +209,105 @@ slopes and a break, and those leave energy, density, epsilon_B and p trading
 off against each other. Kumar et al. break the degeneracy with their X-ray and
 radio data. Only the dense case, 10⁻² cm⁻³, fails to fit at all.
 
+## Adding X-ray and radio data
+
+`broadband_model.py` fits the same jet to three windows of the spectrum at
+once, with six parameters free (energy, opening angle, viewing angle,
+density, p and epsilon_B; epsilon_e = 0.1 and xi_N = 1 fixed as in Kumar et
+al.), and samples the posterior by nested sampling:
+
+- **ZTF g, r, i** before 8 days, as above (16 points, 2 % error floor).
+- **Swift/XRT**: 19 bins between 1.9 and 3.5 days from the UK Swift Science
+  Data Centre (`fetch_xray.py`), turned into the unabsorbed flux density at
+  3 keV with the time-averaged spectrum (photon index 1.72). At 3 keV the
+  conversion hardly depends on the uncertain absorption. Its remaining
+  uncertainty is the same for every point, so it is one calibration offset
+  with a 0.1 mag prior. The data do not constrain it further: its posterior,
+  −0.01 ± 0.10 mag, is the prior.
+- **uGMRT** at 1.25 and 0.65 GHz, 16 to 33 days: the three detections in
+  Kumar et al.'s Table A4, with a 15 % floor for the flux scale and
+  interstellar scintillation (an assumption: the paper does not say whether
+  its errors include them).
+
+`afterglowpy`'s spectrum leaves out synchrotron self-absorption, so the model
+adds it, with the self-absorption frequency of Granot & Sari (2002). It turns
+out not to matter here: the posterior puts that frequency at 3 to 12 MHz
+(95 %), far below the radio bands.
+
+```bash
+pip install -e ".[models,nested]"
+python case_studies/grb210204a/broadband_model.py --n-jobs 12   # about 80 minutes of sampling
+```
+
+**What X-ray and radio data add.** Within jets narrower than 0.1 rad, the
+family Kumar et al. found, the posterior from all three wavebands against
+the one from ZTF alone (medians and 68 % intervals):
+
+| | ZTF alone | ZTF + XRT + uGMRT | Kumar et al. (2022) |
+|---|---:|---:|---:|
+| log10 E0 (erg) | 54.1 +0.9 −0.8 | 54.62 +0.33 −0.29 | 54.06 ± 0.03 |
+| log10 n0 (cm⁻³) | −4.4 +3.2 −1.1 | −5.51 ± 0.32 | −5.67 +0.13 −0.16 |
+| log10 epsilon_B | −2.0 ± 1.2 | −1.96 +0.32 −0.37 | −0.86 +0.17 −0.15 |
+| Electron index, p | 2.42 +0.11 −0.15 | 2.349 +0.030 −0.036 | 2.18 ± 0.03 |
+| θ_core (rad) | 0.080 +0.015 −0.021 | 0.065 +0.025 −0.031 | 0.024 +0.003 −0.002 |
+| θ_obs (rad) | 0.056 +0.032 −0.028 | 0.057 +0.025 −0.037 | 0.010 ± 0.002 |
+
+The 68 % intervals shrink by a factor of 6.7 in density, 3.3 in epsilon_B,
+2.6 in energy and 4 in p. The density agrees with Kumar et al.'s. The energy,
+epsilon_B and p do not, by 2 to 4 standard deviations. Kumar et al. fitted
+more optical photometry, from several telescopes, and X-ray fluxes at 10 keV,
+and the ZTF fluxes are 16 % brighter than their model (above). The intervals
+here hold for these data and these error floors, not for the burst in
+general.
+
+<p align="center">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="figures/broadband_posterior_dark.png">
+  <img src="figures/broadband_posterior_light.png" alt="Corner plot of the narrow-jet posterior from ZTF alone and from ZTF, Swift/XRT and uGMRT together, with Kumar et al.'s values" width="80%">
+</picture>
+</p>
+
+**What they do not decide: the jet's geometry.** A second family of jets fits
+all three wavebands as well: jets 0.3 to 0.8 rad wide (median 0.6), seen from
+just inside their edge. The best fit of each family:
+
+| | Narrow jet | Wide jet |
+|---|---:|---:|
+| θ_core, θ_obs (rad) | 0.021, 0.008 | 0.664, 0.660 |
+| log10 E0, log10 n0, p | 55.0, −5.7, 2.36 | 54.5, −5.5, 2.36 |
+| chi² ZTF / XRT / uGMRT | 7.9 / 16.2 / 0.1 | 11.8 / 15.9 / 1.8 |
+| chi²/dof | 24.1/31 | 29.5/31 |
+| Energy of the two jets, E0 (1 − cos θ_core) | 2.2 × 10⁵¹ erg | 6.9 × 10⁵³ erg |
+
+The evidence of each family is almost the same: ln Z = −43.39 for the narrow
+jets (θ_core up to 0.1 rad) and −43.06 for the wide ones, a Bayes factor of
+ln B = −0.33 ± 0.01 (narrow against wide). The data have no preference.
+Under the default prior, uniform in θ_core up to π/2, the wide family holds
+96 % of the posterior simply because it spans 94 % of that prior. The wide
+jets' θ_core and θ_obs run up to the 0.8 rad upper bound of the θ_obs prior
+(95 % upper limits 0.80 and 0.79), so their width and their evidence hold
+for that bound. In both families θ_obs rises in step with θ_core, and the
+isotropic-equivalent energy, density, epsilon_B and p come out the same.
+What would tell the two apart is the jet's true energy, E0 (1 − cos θ_core):
+the best wide jet needs about 300 times more than the best narrow one. So
+would earlier X-ray data, or deeper optical and radio data after about 10
+and 30 days, where the two models part (the ZTF points after 8 days are left
+out because of the flares, and are too faint to tell the two apart):
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="figures/broadband_lightcurve_dark.png">
+  <img src="figures/broadband_lightcurve_light.png" alt="GRB 210204A light curve from Swift/XRT, ZTF and uGMRT with the best narrow-jet and wide-jet models" width="100%">
+</picture>
+
+<p align="center">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="figures/broadband_geometry_dark.png">
+  <img src="figures/broadband_geometry_light.png" alt="Corner plot of the broadband posterior under the full prior, dominated by wide jets, with the narrow-jet posterior overlaid" width="80%">
+</picture>
+</p>
+
+Every number above is in [`results/broadband_model.json`](results/broadband_model.json).
+
 ## Limitations
 
 - **One epoch before the break.** The ZTF survey visited the field 0.6 hours
@@ -185,6 +316,10 @@ radio data. Only the dense case, 10⁻² cm⁻³, fails to fit at all.
 - **Survey depth.** After about 5 days the afterglow falls below the depth of
   30 s ZTF exposures; around the full moon at 21 to 25 days the frames are almost
   two magnitudes shallower and have few calibration stars.
+- **Few X-ray and radio points.** Swift/XRT observed for two days and the
+  radio detections are three. The X-ray bins hold 15 to 34 counts each,
+  where a Gaussian likelihood is only approximate, and the radio errors are
+  taken as 1σ, which the paper does not state.
 - **No host galaxy** is detected at the position, so the reference images
   contain only field stars; the subtraction is still needed for them and for
   the zero-point consistency between epochs.

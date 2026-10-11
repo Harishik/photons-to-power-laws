@@ -15,11 +15,18 @@ are then AB-like averages of ``F_nu`` weighted by ``T(lambda) / lambda``.
 
 Plain band names (``"g"``, ``"r"``, ``"zr"``) are not in the registry; for them
 the effective wavelengths in :data:`EFFECTIVE_WAVELENGTH_NM` are used, as before.
+
+Measurements at one frequency, such as an X-ray flux density at 10 keV or a
+radio flux density, are named after the frequency itself:
+``"xrt:10keV"``, ``"gmrt:1.25GHz"``, ``"alma:3mm"`` (instrument, then a number
+and a unit of frequency, photon energy or wavelength; the instrument part is
+optional).
 """
 
 from __future__ import annotations
 
 import csv
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from functools import cache, lru_cache
@@ -153,6 +160,29 @@ def filter_source(name: str) -> dict[str, str]:
     return dict(_index()[str(name)])
 
 
+_TAG = re.compile(r"^\s*([0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)\s*([a-zA-Zµ]+)\s*$")
+_FREQUENCY = {"hz": 1.0, "khz": 1e3, "mhz": 1e6, "ghz": 1e9, "thz": 1e12}
+_ENERGY_EV = {"ev": 1.0, "kev": 1e3, "mev": 1e6}
+_LENGTH_NM = {"nm": 1.0, "um": 1e3, "µm": 1e3, "micron": 1e3, "mm": 1e6, "cm": 1e7, "m": 1e9, "a": 0.1, "angstrom": 0.1}
+_H_EV_S = 4.135667696e-15  # Planck constant in eV s
+
+
+def tagged_frequency_hz(band: str) -> float | None:
+    """The frequency of a band named after it (``"xrt:10keV"``, ``"gmrt:1.25GHz"``, ``"3mm"``), else None."""
+    tag = str(band).rsplit(":", 1)[-1]
+    match = _TAG.match(tag)
+    if not match:
+        return None
+    value, unit = float(match.group(1)), match.group(2).lower()
+    if unit in _FREQUENCY:
+        return value * _FREQUENCY[unit]
+    if unit in _ENERGY_EV:
+        return value * _ENERGY_EV[unit] / _H_EV_S
+    if unit in _LENGTH_NM:
+        return SPEED_OF_LIGHT_M_S / (value * _LENGTH_NM[unit] * 1e-9)
+    return None
+
+
 def instrument_of(band: str) -> str | None:
     """The instrument part of an ``"instrument:filter"`` band name, or None for plain names."""
     band = str(band)
@@ -160,12 +190,16 @@ def instrument_of(band: str) -> str | None:
 
 
 def band_wavelength_nm(band: str, wavelengths_nm: Mapping[str, float] | None = None) -> float:
-    """Wavelength of a band in nm: from ``wavelengths_nm``, the registry (pivot), or the default table."""
+    """Wavelength of a band in nm: from ``wavelengths_nm``, the registry (pivot), the band's name
+    (``"xrt:10keV"``, see :func:`tagged_frequency_hz`), or the default table."""
     band = str(band)
     if wavelengths_nm and band in wavelengths_nm:
         return float(wavelengths_nm[band])
     if has_bandpass(band):
         return get_bandpass(band).pivot_nm
+    nu = tagged_frequency_hz(band)
+    if nu is not None:
+        return SPEED_OF_LIGHT_M_S / nu * 1e9
     table = wavelengths_nm or EFFECTIVE_WAVELENGTH_NM
     key = band if band in table else band[-1:]
     if key not in table:

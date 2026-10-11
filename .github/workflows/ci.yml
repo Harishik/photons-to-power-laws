@@ -37,7 +37,7 @@ jobs:
       - name: Install
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev,models]"
+          pip install -e ".[dev,models,nested]"
           python -c "import photutils, astropy, numpy; print('photutils', photutils.__version__, 'astropy', astropy.__version__, 'numpy', numpy.__version__)"
       - name: Unit and end-to-end tests
         run: pytest --cov --cov-report=term
@@ -51,7 +51,7 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - run: pip install -e ".[models]"
+      - run: pip install -e ".[models,nested]"
       - name: Synthetic demo recovers the injected physics
         run: p2pl demo --out "$RUNNER_TEMP/demo" --theme light
       - name: GRB 221009A case study runs on the committed ZTF data
@@ -62,6 +62,14 @@ jobs:
         run: >-
           python case_studies/grb210204a/physical_model.py --lightcurve "$RUNNER_TEMP/cs2/lightcurve_ztf.csv"
           --results "$RUNNER_TEMP/cs2" --figures "$RUNNER_TEMP/cs2_fig" --steps 400
+      - name: GRB 210204A jet break by nested sampling (short run)
+        run: >-
+          python case_studies/grb210204a/nested_break.py --lightcurve "$RUNNER_TEMP/cs2/lightcurve_ztf.csv"
+          --results "$RUNNER_TEMP/cs2" --figures "$RUNNER_TEMP/cs2_fig" --quick
+      - name: GRB 210204A optical, X-ray and radio jet model (short run)
+        run: >-
+          python case_studies/grb210204a/broadband_model.py --lightcurve "$RUNNER_TEMP/cs2/lightcurve_ztf.csv"
+          --results "$RUNNER_TEMP/cs2" --figures "$RUNNER_TEMP/cs2_fig" --quick
       - uses: actions/upload-artifact@v4
         with:
           name: science-outputs

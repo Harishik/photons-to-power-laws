@@ -5,8 +5,8 @@ type: software
 authors:
   - given-names: "Harishik Dev Singh"
     family-names: "Jamwal"
-version: 0.5.0
-date-released: 2026-10-11
+version: 0.6.0
+date-released: 2026-10-12
 license: MIT
 repository-code: "https://github.com/Harishik/photons-to-power-laws"
 abstract: >-
@@ -16,7 +16,8 @@ abstract: >-
   empirical-PSF or aperture photometry (with a PSF and kernel that vary across
   full CCD frames), dust-extinction corrections, multi-band and
   multi-instrument light-curve fitting through filter transmission curves with
-  MCMC and grid posteriors, and physical jet models with afterglowpy,
+  MCMC, grid and nested-sampling posteriors, and physical jet models with
+  afterglowpy fitted to optical, X-ray and radio data,
   and tests the fitted temporal and spectral indices against the closure
   relations of the standard fireball model. It is validated on simulated data
   with known ground truth and applied to public ZTF images of GRB 221009A and GRB 210204A.
@@ -30,3 +31,5 @@ keywords:
   - light curves
   - closure relations
   - Zwicky Transient Facility
+  - nested sampling
+  - Swift XRT

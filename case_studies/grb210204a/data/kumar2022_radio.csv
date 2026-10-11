@@ -1,0 +1,13 @@
+# uGMRT radio afterglow of GRB 210204A, transcribed from Table A4 of Kumar et al. (2022, MNRAS 513, 2777;
+# arXiv:2204.07587, LaTeX source GRB210204A.tex lines 857-861).
+# time_s: T-T0 as typeset, since the Fermi/GBM trigger. Row 1's JD (2459266.06) implies 1407419 s, 5147 s later;
+#   the paper's figure uses the typeset value. The difference (0.0016 dex) does not matter for the fit.
+# frequency: the table prints "1254.6 GHz" and "647.8 GHz"; these are MHz (uGMRT band 5 is 1000-1450 MHz,
+#   band 4 550-900 MHz; the paper's figure legend reads 1.254 GHz and 0.647 GHz; GCN Circular 29541).
+#   The band order follows the table and the figure (the text gives the opposite order for the March epochs).
+# flux_ujy: microjansky, as printed. Errors are taken to be 1 sigma; the paper does not say.
+# The first point is also reported in GCN Circular 29541 (about 140 uJy); it is not a separate measurement.
+time_s,band,frequency_hz,flux_ujy,flux_err_ujy,telescope
+1402272.00,gmrt:1254.6MHz,1.2546e9,140,22,uGMRT band 5
+2706011.71,gmrt:1254.6MHz,1.2546e9,130,20,uGMRT band 5
+2876272.416,gmrt:647.8MHz,6.478e8,95,45,uGMRT band 4

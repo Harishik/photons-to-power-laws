@@ -54,6 +54,9 @@ class Posterior:
     samples: np.ndarray = field(repr=False)
     acceptance_fraction: float
     autocorr_time: np.ndarray | None = field(default=None, repr=False)
+    log_evidence: float | None = None
+    log_evidence_err: float | None = None
+    n_calls: int | None = None
 
     def __getitem__(self, name: str) -> np.ndarray:
         if name == "t_break_days":
@@ -73,7 +76,12 @@ class Posterior:
 
     def summary(self) -> str:
         head = f"{self.fit.model_name} posterior: {len(self.samples)} samples"
-        how = "grid" if np.isnan(self.acceptance_fraction) else f"acceptance {self.acceptance_fraction:.2f}"
+        if self.log_evidence is not None:
+            how = f"nested sampling, ln Z = {self.log_evidence:.2f} ± {self.log_evidence_err:.2f}"
+        elif np.isnan(self.acceptance_fraction):
+            how = "grid"
+        else:
+            how = f"acceptance {self.acceptance_fraction:.2f}"
         lines = [f"{head}, {how}"]
         for name in self.names:
             key = "t_break_days" if name == "t_break" else name

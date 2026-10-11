@@ -151,3 +151,15 @@ def test_quadrature_does_not_depend_on_the_curve_normalisation():
     assert model.band_factors(["scaled:g"], 0.66)[0] == pytest.approx(model.band_factors(["g"], 0.66)[0], rel=1e-12)
     with pytest.raises(ValueError, match="no positive transmission"):
         SpectralModel(500.0, bandpasses={"dark": Bandpass("dark", bp.wavelength_nm, 0 * bp.transmission)}).grid("dark")
+
+
+def test_bands_named_after_their_frequency():
+    from grb_afterglow.filters import band_frequency_hz, tagged_frequency_hz
+
+    assert tagged_frequency_hz("xrt:10keV") == pytest.approx(2.418e18, rel=1e-3)  # E = h nu
+    assert tagged_frequency_hz("gmrt:1.25GHz") == 1.25e9
+    assert tagged_frequency_hz("alma:3mm") == pytest.approx(299_792_458.0 / 3e-3)
+    assert band_frequency_hz("2.2um") == pytest.approx(299_792_458.0 / 2.2e-6)
+    assert instrument_of("xrt:10keV") == "xrt"
+    assert tagged_frequency_hz("lt:r") is None and tagged_frequency_hz("zr") is None
+    assert band_wavelength_nm("zr") == 617.0  # plain names still use the table

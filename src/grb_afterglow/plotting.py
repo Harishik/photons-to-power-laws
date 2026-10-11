@@ -172,14 +172,17 @@ def band_model(fit: FitResult, t, band: str, wavelengths_nm: dict[str, float] | 
 
 def _sorted_bands(lc: LightCurve) -> list[str]:
     """Bands in order of wavelength (unknown bands last, in order of appearance)."""
+    return _order_bands(lc.bands)
 
+
+def _order_bands(bands) -> list[str]:
     def key(b):
         try:
             return band_wavelength_nm(str(b))
         except KeyError:
             return np.inf
 
-    return sorted(lc.bands, key=key)
+    return sorted(bands, key=key)
 
 
 def plot_lightcurve(
@@ -394,6 +397,154 @@ def plot_lightcurve(
             rax.set_xlabel("Time since trigger (days)")
         else:
             ax.set_xlabel("Time since trigger (days)")
+        fig.align_ylabels()
+        _save(fig, savepath)
+        return fig, ax
+
+
+_BROADBAND_MARKERS = ("h", "*", "P", "X", "d")
+
+
+def plot_broadband(
+    lc: LightCurve,
+    fit,
+    *,
+    alternative=None,
+    alternative_label: str = "alternative model",
+    unfitted: LightCurve | None = None,
+    band_labels: dict[str, str] | None = None,
+    model_range: tuple[float, float] | None = None,
+    title: str | None = None,
+    subtitle: str | None = None,
+    theme: str = "light",
+    figsize: tuple[float, float] = (8.4, 6.2),
+    savepath: str | PathLike[str] | None = None,
+):
+    """Plot a light curve that spans the spectrum, from X-rays to radio, with a physical model.
+
+    Every band gets its own colour and marker, ordered by frequency, and its
+    model curve (a :class:`~grb_afterglow.physical.AfterglowFit`, through its
+    calibration offsets). The residual panel shows (data - model) / error.
+
+    Parameters
+    ----------
+    lc
+        The measurements that were fitted (flux density in µJy).
+    fit
+        The model, with a ``predict_band(t_s, band)`` method.
+    alternative
+        A second model (e.g. a published one), drawn dashed in every band.
+    unfitted
+        Measurements shown for context but not fitted (e.g. late flares), as
+        hollow markers; only those detected at 3 sigma or more.
+    band_labels
+        Legend label per band (defaults to the band name).
+    model_range
+        ``(t_min, t_max)`` in days over which to draw the models.
+    """
+    if unfitted is not None:
+        unfitted = unfitted.subset(unfitted.detected(3.0))
+    with themed(theme) as t:
+        fig, (ax, rax) = plt.subplots(
+            2, 1, figsize=figsize, sharex=True, gridspec_kw={"height_ratios": [3.4, 1], "hspace": 0.06}
+        )
+        fitted = set(lc.bands)
+        extra = [b for b in (unfitted.bands if unfitted is not None else []) if b not in fitted]
+        bands = _order_bands([*lc.bands, *extra])
+        days = lc.time_days
+        tmin, tmax = days.min(), days.max()
+        if unfitted is not None and len(unfitted):
+            tmin, tmax = min(tmin, unfitted.time_days.min()), max(tmax, unfitted.time_days.max())
+        grid_days = np.geomspace(tmin / 1.5, tmax * 1.5, 300)
+        lo, hi = model_range or (grid_days[0], grid_days[-1])
+        model_days = np.geomspace(max(lo, grid_days[0]), min(hi, grid_days[-1]), 300)
+        palette = [*t.series[3:], t.ink, t.muted, t.ink_secondary]
+        handles, extra_index = [], 0
+        for band in bands:
+            if str(band)[-1:] in ("g", "r", "i") and ":" not in str(band):
+                color, marker = band_style(band, theme)
+            else:
+                color = palette[extra_index % len(palette)]
+                marker = _BROADBAND_MARKERS[extra_index % len(_BROADBAND_MARKERS)]
+                extra_index += 1
+            ms = 9.0 if marker == "*" else 6.5
+            label = (band_labels or {}).get(band, str(band))
+            if band in fitted:
+                sub = lc.select(band)
+                ax.errorbar(
+                    sub.time_days,
+                    sub.flux,
+                    yerr=sub.flux_err,
+                    fmt=marker,
+                    ms=ms,
+                    color=color,
+                    mec=t.surface,
+                    mew=0.9,
+                    elinewidth=1.1,
+                    capsize=0,
+                    zorder=4,
+                )
+            if unfitted is not None and band in unfitted.bands:
+                late = unfitted.select(band)
+                ax.errorbar(
+                    late.time_days,
+                    late.flux,
+                    yerr=late.flux_err,
+                    fmt=marker,
+                    ms=ms - 1,
+                    mfc="none",
+                    mec=color,
+                    color=color,
+                    mew=1.0,
+                    elinewidth=0.9,
+                    capsize=0,
+                    alpha=0.7,
+                    zorder=3,
+                )
+            if band not in fitted:  # only unfitted points: no model, no residuals
+                handles.append(Line2D([], [], color=color, marker=marker, ms=ms, mfc="none", lw=0, label=label))
+                continue
+            ax.plot(model_days, fit.predict_band(model_days * SECONDS_PER_DAY, band), color=color, lw=1.7, zorder=3)
+            if alternative is not None:
+                ax.plot(
+                    model_days,
+                    alternative.predict_band(model_days * SECONDS_PER_DAY, band),
+                    color=color,
+                    lw=1.1,
+                    ls=(0, (5, 3)),
+                    alpha=0.8,
+                    zorder=2,
+                )
+            resid = (sub.flux - fit.predict_band(sub.time, band)) / sub.flux_err
+            rax.scatter(sub.time_days, resid, marker=marker, s=40 if marker == "*" else 26, color=color, zorder=4)
+            handles.append(Line2D([], [], color=color, marker=marker, ms=ms, mec=t.surface, lw=1.7, label=label))
+        if unfitted is not None and len(unfitted):
+            handles.append(
+                Line2D([], [], color=t.ink_secondary, marker="o", mfc="none", lw=0, ms=6, label="not fitted")
+            )
+        if alternative is not None:
+            handles.append(Line2D([], [], color=t.ink_secondary, lw=1.1, ls=(0, (5, 3)), label=alternative_label))
+
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+        ax.set_ylabel("Flux density (µJy)")
+        ax.set_xlim(grid_days[0], grid_days[-1])
+        format_log_time_axis(ax)
+        flux = np.concatenate([lc.flux, unfitted.flux if unfitted is not None else []])
+        positive = flux[flux > 0]
+        ax.set_ylim(positive.min() / 3, positive.max() * 3)
+        ax.legend(handles=handles, loc="upper left", bbox_to_anchor=(1.01, 1.0), handlelength=2.2)
+        if title:
+            ax.set_title(title, pad=22 if subtitle else 8)
+        if subtitle:
+            ax.text(0, 1.015, subtitle, transform=ax.transAxes, fontsize=9.5, color=t.ink_secondary, va="bottom")
+        rax.axhspan(-1, 1, color=t.grid, alpha=0.6, lw=0, zorder=0)
+        rax.axhline(0, color=t.axis, lw=0.9, zorder=1)
+        rax.set_ylabel("Residual (σ)")
+        offsets = np.concatenate([c.get_offsets()[:, 1] for c in rax.collections if len(c.get_offsets())])
+        lim = max(3.5, float(np.nanmax(np.abs(offsets))) + 0.5) if offsets.size else 3.5
+        rax.set_ylim(-lim, lim)
+        rax.set_xlabel("Time since trigger (days)")
         fig.align_ylabels()
         _save(fig, savepath)
         return fig, ax
@@ -844,6 +995,12 @@ _PARAM_LABELS = {
 }
 
 
+def _param_label(name: str) -> str:
+    if name.startswith("offset_"):
+        return rf"$\Delta m_{{\rm {name[len('offset_') :]}}}$"
+    return _PARAM_LABELS.get(name, name)
+
+
 def _credible_levels(hist: np.ndarray, levels: Sequence[float]) -> list[float]:
     """Density thresholds enclosing the given probability mass of a 2-D histogram."""
     flat = np.sort(hist.ravel())[::-1]
@@ -858,6 +1015,8 @@ def plot_posterior(
     derived: dict[str, np.ndarray] | None = None,
     truths: dict[str, float] | None = None,
     truths_label: str = "injected",
+    compare=None,
+    labels: tuple[str, str] | None = None,
     title: str | None = None,
     theme: str = "light",
     savepath: str | PathLike[str] | None = None,
@@ -876,6 +1035,11 @@ def plot_posterior(
     truths
         Reference values (e.g. injected parameters), drawn as lines and kept
         within the axis ranges; ``truths_label`` names them in the legend.
+    compare
+        A second posterior with the same parameters, drawn in outline over the
+        first (say, the same model fitted to less data); ``labels`` names the
+        two in the legend. The numbers above the diagonal are the first's, and
+        ``derived`` quantities are shown for the first only.
     """
     from scipy.ndimage import gaussian_filter
 
@@ -884,13 +1048,21 @@ def plot_posterior(
         params = [("t_break_days" if n == "t_break" else n) for n in posterior.names if n != "amplitude"]
         params += list(derived)
     data = [np.asarray(derived[n] if n in derived else posterior[n], dtype=float) for n in params]
+    other = None
+    if compare is not None:  # only the parameters the second posterior has (not the derived ones)
+        known = set(compare.names) | ({"t_break_days"} if "t_break" in compare.names else set())
+        other = [np.asarray(compare[n], dtype=float) if n in known else None for n in params]
     k = len(params)
     with themed(theme) as t:
         accent = t.series[0]
+        second = t.series[2] if not truths else t.series[3]
         fig, axes = plt.subplots(k, k, figsize=(1.75 * k + 0.7, 1.75 * k + 0.7), squeeze=False)
         ranges = []
-        for name, x in zip(params, data, strict=True):
+        for i, (name, x) in enumerate(zip(params, data, strict=True)):
             lo, hi = np.percentile(x, [0.2, 99.8])
+            if other is not None and other[i] is not None:
+                olo, ohi = np.percentile(other[i], [0.2, 99.8])
+                lo, hi = min(lo, olo), max(hi, ohi)
             ref = (truths or {}).get(name)
             if ref is not None and np.isfinite(ref):
                 lo, hi = min(lo, ref), max(hi, ref)
@@ -904,14 +1076,17 @@ def plot_posterior(
                     continue
                 ax.grid(False)
                 if i == j:
-                    ax.hist(data[i], bins=40, range=ranges[i], histtype="stepfilled", color=accent, alpha=0.25)
-                    ax.hist(data[i], bins=40, range=ranges[i], histtype="step", color=accent, lw=1.2)
+                    style = {"bins": 40, "range": ranges[i], "density": True}
+                    ax.hist(data[i], histtype="stepfilled", color=accent, alpha=0.25, **style)
+                    ax.hist(data[i], histtype="step", color=accent, lw=1.2, **style)
+                    if other is not None and other[i] is not None:
+                        ax.hist(other[i], histtype="step", color=second, lw=1.2, **style)
                     lo, med, hi = np.percentile(data[i], [15.865, 50, 84.135])
                     for v, ls in ((lo, ":"), (med, "-"), (hi, ":")):
                         ax.axvline(v, color=t.ink_secondary, lw=0.9, ls=ls)
                     digits = max(0, int(np.ceil(-np.log10(max(min(med - lo, hi - med), 1e-12)))) + 1)
                     ax.set_title(
-                        f"{_PARAM_LABELS.get(params[i], params[i])} = {med:.{digits}f}"
+                        f"{_param_label(params[i])} = {med:.{digits}f}"
                         f"$^{{+{hi - med:.{digits}f}}}_{{-{med - lo:.{digits}f}}}$",
                         fontsize=9.5,
                         loc="center",
@@ -927,6 +1102,12 @@ def plot_posterior(
                         ax.contourf(xc, yc, h, levels=[lv[0], h.max() * 1.01], colors=[accent], alpha=0.18)
                         ax.contourf(xc, yc, h, levels=[lv[1], h.max() * 1.01], colors=[accent], alpha=0.35)
                         ax.contour(xc, yc, h, levels=lv, colors=[accent], linewidths=0.9)
+                    if other is not None and other[i] is not None and other[j] is not None:
+                        h2, _, _ = np.histogram2d(other[j], other[i], bins=40, range=[ranges[j], ranges[i]])
+                        h2 = gaussian_filter(h2.T, 1.0)
+                        lv2 = _credible_levels(h2, (0.95, 0.68))
+                        if lv2[0] < lv2[1]:
+                            ax.contour(xc, yc, h2, levels=lv2, colors=[second], linewidths=1.0)
                     if truths and params[i] in truths:
                         ax.axhline(truths[params[i]], color=t.series[2], lw=1.0)
                     ax.set_ylim(ranges[i])
@@ -941,18 +1122,23 @@ def plot_posterior(
                 if i < k - 1:
                     ax.set_xticklabels([])
                 else:
-                    ax.set_xlabel(_PARAM_LABELS.get(params[j], params[j]))
+                    ax.set_xlabel(_param_label(params[j]))
                     ax.tick_params(axis="x", labelrotation=40)
                 if j > 0 and i != j:
                     ax.set_yticklabels([])
                 elif i != j:
-                    ax.set_ylabel(_PARAM_LABELS.get(params[i], params[i]))
+                    ax.set_ylabel(_param_label(params[i]))
+        handles = []
+        if other is not None:
+            first_label, second_label = labels or ("posterior", "comparison")
+            handles += [
+                Line2D([], [], color=accent, lw=1.2, label=first_label),
+                Line2D([], [], color=second, lw=1.2, label=second_label),
+            ]
         if truths:
-            fig.legend(
-                handles=[Line2D([], [], color=t.series[2], lw=1.2, label=truths_label)],
-                loc="upper right",
-                bbox_to_anchor=(0.98, 0.98),
-            )
+            handles.append(Line2D([], [], color=t.series[2], lw=1.2, label=truths_label))
+        if handles:
+            fig.legend(handles=handles, loc="upper right", bbox_to_anchor=(0.98, 0.98))
         if title:
             fig.suptitle(title, x=0.02, ha="left", fontsize=12, color=t.ink, weight="bold")
         fig.subplots_adjust(hspace=0.08, wspace=0.08)

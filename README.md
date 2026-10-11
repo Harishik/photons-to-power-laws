@@ -24,8 +24,10 @@ instruments, through each instrument's filter curve, and samples their
 posterior. The fitted slopes are tested against the closure relations of the
 fireball model to infer the electron energy index, the circumburst medium and
 the jet break. Physical blast-wave models (`afterglowpy`) can be fitted too,
-and full CCD frames are handled with a PSF and subtraction kernel that vary
-across the field.
+to optical data together with X-ray and radio measurements, and posteriors
+with several modes are sampled by nested sampling, which also gives the
+Bayesian evidence for comparing models. Full CCD frames are handled with a PSF
+and subtraction kernel that vary across the field.
 
 It is validated three ways: on a simulated campaign where the true physics is
 known, and on public ZTF images of two real bursts, checked against published
@@ -182,15 +184,33 @@ With a single ZTF epoch before the break, the posterior has two modes:
   unconstrained.
 
 MCMC does not converge on that shape, and least squares sees only the first
-mode. The posterior is therefore integrated on a grid of break time and early
-decay index.
+mode. A grid of break time and early decay index integrates it, and nested
+sampling, which needs no grid, gives the same posterior (break at
+0.97 [0.07, 1.84] d against 0.95 [0.07, 1.82] d). Nested sampling also gives
+the evidence: ln B = 39.8 for the break against a single power law.
 
-A physical top-hat jet model (`afterglowpy`) was also fitted, with Kumar et
-al.'s density and epsilon_B held fixed. From the ZTF light curve alone it
-gives their electron index (2.16 against 2.18) and jet opening angle (0.022
-against 0.024 rad). With epsilon_B free as well, densities held about 50 times
-apart (10⁻⁵·⁶⁷ and 10⁻⁴ cm⁻³) fit equally well, a degeneracy that only X-ray
-and radio data break.
+A physical top-hat jet (`afterglowpy`) fitted to the ZTF light curve alone
+leaves energy, density and epsilon_B trading off against each other: with
+epsilon_B free, densities 50 times apart fit equally well. Adding the
+Swift/XRT afterglow and Kumar et al.'s uGMRT radio detections breaks that
+degeneracy. For jets narrower than 0.1 rad, the 68 % intervals shrink by a
+factor of 6.7 in density, 3.3 in epsilon_B, 2.6 in energy and 4 in the
+electron index, to
+n0 = 10^(−5.51 ± 0.32) cm⁻³ (Kumar et al.: 10^−5.67) and p = 2.35 ± 0.03.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="case_studies/grb210204a/figures/broadband_lightcurve_dark.png">
+  <img src="case_studies/grb210204a/figures/broadband_lightcurve_light.png" alt="GRB 210204A from Swift/XRT, ZTF and uGMRT with the best narrow-jet and wide-jet models" width="100%">
+</picture>
+
+What the three wavebands do not decide is the jet's geometry. A narrow jet
+seen almost on its axis, as Kumar et al. found, and a jet 0.3 to 0.8 rad wide
+(up to the bound of the viewing-angle prior) seen from just inside its edge
+fit equally well: ln B = −0.33 ± 0.01, narrow against wide. Both give the
+same isotropic-equivalent energy, density, epsilon_B and p, but the best wide
+jet carries about 300 times more true energy, E0 (1 − cos θ_core), than the
+best narrow one, and the two light curves part before 1 day in X-rays and
+after about 10 to 30 days in the optical and radio.
 The write-up is in [`case_studies/grb210204a`](case_studies/grb210204a/README.md).
 
 ### Full CCD frames
@@ -248,7 +268,7 @@ recovered zero points track the simulated atmosphere:
 git clone https://github.com/Harishik/photons-to-power-laws.git
 cd photons-to-power-laws
 python -m venv .venv && source .venv/bin/activate
-pip install -e .              # or ".[models]" to fit physical afterglow models with afterglowpy
+pip install -e .              # or ".[models,nested]" for physical jet models (afterglowpy) and nested sampling (nautilus)
 ```
 
 Run the validation demo (simulate, reduce, fit, validate, draw figures):
@@ -342,6 +362,29 @@ jet = fit_afterglow(lc, model, ["log10_E0", "theta_core", "p"], fixed={"log10_n0
 posterior = sample_afterglow(lc, jet)
 ```
 
+X-ray and radio measurements join the same light curve under band names that
+give their frequency, and nested sampling (with `pip install -e ".[nested]"`)
+explores posteriors with several modes and returns the evidence:
+
+```python
+from grb_afterglow.nested import bayes_factor, nested_posterior
+
+broadband = ...  # a LightCurve with bands such as "zr", "xrt:3keV" and "gmrt:1.25GHz", in µJy
+model = AfterglowModel(redshift=0.876, ebv_mw=0.028, self_absorption=True)
+jet = fit_afterglow(
+    broadband,
+    model,
+    ["log10_E0", "theta_core", "theta_obs", "log10_n0", "p", "log10_eps_B"],
+    sys_err={"default": 0.02, "gmrt": 0.15},  # error floors per instrument
+    calibration_offsets={"xrt": 0.1},  # one flux-scale uncertainty (mag) shared by all X-ray points
+)
+posterior = nested_posterior(broadband, jet)  # n_jobs=8 runs it on 8 cores (scripts need a __main__ guard)
+print(posterior.summary())  # includes ln Z
+
+# Model comparison: the evidence of a broken against a single power law
+ln_b, err = bayes_factor(nested_posterior(lc, broken), nested_posterior(lc, single))
+```
+
 Full CCD frames, whose seeing changes across the field, take
 `PipelineConfig(photometry="psf", tiles=(4, 4))`: the PSF varies smoothly over
 the frame and the subtraction kernel is fitted per tile. With the default
@@ -353,9 +396,9 @@ aperture photometry, `tiles` affects only the subtraction kernel.
 
 ```text
 src/grb_afterglow/      the package (pipeline stages, fitting, closure relations, plots, CLI)
-tests/                  126 tests: unit, statistical error-bar checks, end-to-end recovery
+tests/                  134 tests: unit, statistical error-bar checks, end-to-end recovery
 case_studies/grb221009a ZTF case study behind the Galactic plane: fetch_data.py, analyze.py, data, results, figures
-case_studies/grb210204a three-band ZTF case study with a jet break and late flares, and a physical jet model
+case_studies/grb210204a three-band ZTF case study with a jet break, late flares, and a jet model fitted with X-ray and radio data
 examples/synthetic/     demo outputs: light curve, per-frame table, validation summary
 docs/                   science background, figures, architecture diagram (make_architecture.py)
 dev/bakeoff/            harness and results of the PSF-photometry and image-subtraction method comparison
@@ -367,8 +410,8 @@ scripts/fetch_filters.py rebuilds the filter curves in src/grb_afterglow/data/fi
 ## Testing and quality
 
 ```bash
-pip install -e ".[dev,models]"
-pytest --cov          # 126 tests
+pip install -e ".[dev,models,nested]"
+pytest --cov          # 134 tests
 ruff check . && ruff format --check .
 ```
 
@@ -383,20 +426,23 @@ demo and both case studies.
 ## Scope and roadmap
 
 Done: PSF photometry and image subtraction (0.3); colour terms, Milky Way and
-host extinction, MCMC posteriors and a second case study (0.4); and in 0.5:
+host extinction, MCMC posteriors and a second case study (0.4); a spatially
+varying PSF and kernel for full CCD frames, several instruments in one light
+curve, physical `afterglowpy` models and near-infrared data (0.5); and in 0.6:
 
-- [x] Spatially varying PSF and kernel, for full CCD frames rather than cutouts
-- [x] Cross-calibration of several instruments into one light curve
-- [x] Physical afterglow models (`afterglowpy`) fitted alongside power laws
-- [x] Near-infrared data, so the spectral index is less sensitive to dust
+- [x] X-ray and radio data in the physical fits, which break the degeneracy
+  between energy, density and magnetic field that optical data leave
+- [x] Nested sampling for multimodal posteriors, and the evidence for
+  comparing models
 
-Possible next steps: X-ray and radio data in the physical fits, which would
-break the degeneracy between energy, density and magnetic field that optical
-data leave; and nested sampling for multimodal posteriors.
+Possible next steps: a Poisson likelihood for X-ray counts, since a Gaussian
+one is only approximate at 15 to 34 counts per bin; and structured (Gaussian)
+jets compared with the top hat by their evidence, which might also decide the
+jet's geometry.
 
 ## Documentation
 
-- [Science background](docs/science_background.md): afterglows, closure relations, jet breaks, image subtraction, PSF photometry, extinction
+- [Science background](docs/science_background.md): afterglows, closure relations, jet breaks, image subtraction, PSF photometry, extinction, X-ray and radio data, nested sampling
 - [GRB 221009A case study](case_studies/grb221009a/README.md) · [GRB 210204A case study](case_studies/grb210204a/README.md)
 - [Changelog](CHANGELOG.md) · [Contributing](CONTRIBUTING.md) · [Citation](CITATION.cff)
 
@@ -409,7 +455,7 @@ If this project helps your work, please cite it using [`CITATION.cff`](CITATION.
   author  = {Jamwal, Harishik Dev Singh},
   title   = {Photons to Power Laws: an optical photometry pipeline for gamma-ray burst afterglows},
   year    = {2026},
-  version = {0.5.0},
+  version = {0.6.0},
   url     = {https://github.com/Harishik/photons-to-power-laws},
 }
 ```
@@ -420,9 +466,12 @@ Built on [Astropy](https://www.astropy.org/) and
 [photutils](https://photutils.readthedocs.io/). The case studies use public data
 from the Zwicky Transient Facility via the NASA/IPAC Infrared Science Archive
 and from Pan-STARRS1 via MAST, Liverpool Telescope photometry published by
-Laskar et al. (2023), and Lowell, Gemini, Palomar and HST photometry published
-by O'Connor et al. (2023); see
-[`case_studies/grb221009a/data`](case_studies/grb221009a/data/README.md) for
+Laskar et al. (2023), Lowell, Gemini, Palomar and HST photometry published
+by O'Connor et al. (2023), and uGMRT radio photometry published by Kumar et
+al. (2022). This work made use of data supplied by the UK Swift Science Data
+Centre at the University of Leicester. See
+[`case_studies/grb221009a/data`](case_studies/grb221009a/data/README.md) and
+[`case_studies/grb210204a/data`](case_studies/grb210204a/data/README.md) for
 full acknowledgements. This research has made use of the SVO Filter Profile
 Service "Carlos Rodrigo", funded by MCIN/AEI/10.13039/501100011033/ through
 grant PID2023-146210NB-I00 (Rodrigo et al. 2012, 2020, 2024).

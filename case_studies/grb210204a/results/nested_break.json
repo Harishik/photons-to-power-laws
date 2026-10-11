@@ -1,0 +1,98 @@
+{
+  "data": {
+    "n_points": 15,
+    "sys_err": 0.02,
+    "source": "results/lightcurve_ztf.csv, 0 < t <= 7 d, Galactic extinction removed"
+  },
+  "sampler": {
+    "code": "nautilus",
+    "quick": false,
+    "n_live": 2000,
+    "n_eff": 10000,
+    "n_networks": 4,
+    "seed": 1,
+    "n_jobs": 3
+  },
+  "broken": {
+    "nested": {
+      "t_break_days": {
+        "median": 0.9721199994389117,
+        "lower_68": 0.0723624919657609,
+        "upper_68": 1.8368154883989243,
+        "lower_95": 0.042771148932277236,
+        "upper_95": 2.6770096917304795
+      },
+      "alpha1": {
+        "median": 0.5023200968411534,
+        "lower_68": -0.9397194335105667,
+        "upper_68": 0.5547859168760527,
+        "lower_95": -2.614803062774792,
+        "upper_95": 0.5796568854364917
+      },
+      "alpha2": {
+        "median": 1.2907843931049099,
+        "lower_68": 1.1254886688677486,
+        "upper_68": 1.7665470252903173,
+        "lower_95": 1.048715153145741,
+        "upper_95": 2.4945109441851683
+      },
+      "beta": {
+        "median": 0.9334650590051532,
+        "lower_68": 0.7361767945321956,
+        "upper_68": 1.1313703984070387,
+        "lower_95": 0.5528309361616248,
+        "upper_95": 1.3160537167393294
+      },
+      "prob_t_break_before_half_day": 0.39491327479562266
+    },
+    "grid": {
+      "t_break_days": {
+        "median": 0.9481483497363015,
+        "lower_68": 0.07051727464690928,
+        "upper_68": 1.824462565500248,
+        "lower_95": 0.04232075096630995,
+        "upper_95": 2.630320878148789
+      },
+      "alpha1": {
+        "median": 0.4997086462625233,
+        "lower_68": -0.9643266769503748,
+        "upper_68": 0.5541779479647363,
+        "lower_95": -2.654506079009251,
+        "upper_95": 0.5800739935269141
+      },
+      "alpha2": {
+        "median": 1.2786539806105683,
+        "lower_68": 1.1234204058809554,
+        "upper_68": 1.7461628990329452,
+        "lower_95": 1.0471619938700223,
+        "upper_95": 2.4190076302870542
+      },
+      "beta": {
+        "median": 0.9288767509937668,
+        "lower_68": 0.7380424772812705,
+        "upper_68": 1.122482064057338,
+        "lower_95": 0.5397360128381959,
+        "upper_95": 1.31257070879003
+      },
+      "prob_t_break_before_half_day": 0.39995,
+      "grid_size": {
+        "t_break": 60,
+        "alpha1": 191
+      },
+      "method": "grid_posterior, as in analyze.py"
+    },
+    "log_evidence": -55.417815918818135,
+    "log_evidence_err": 0.009996252413914157,
+    "likelihood_calls": 95268,
+    "seconds": 550.5774657680013
+  },
+  "single": {
+    "log_evidence": -95.1885381115089,
+    "log_evidence_err": 0.009979428415662702,
+    "likelihood_calls": 67422,
+    "seconds": 100.03793888000655
+  },
+  "ln_bayes_factor_broken_vs_single": 39.77072219269077,
+  "ln_bayes_factor_err": 0.01412494438311248,
+  "priors": "log10 amplitude uniform within 2 dex of the least-squares value; log10 t_break uniform over the observed times; alpha1, alpha2 uniform in [-3, 6]; beta uniform in [-3, 5]"
+}

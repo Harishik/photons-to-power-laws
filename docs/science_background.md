@@ -301,7 +301,7 @@ the logarithms of `E0`, `n0` and `ε_B`, uniform in `p` and `θ_core`, and
 The light curve in a few optical bands measures little more than two slopes
 and a break time. That is three numbers for seven parameters. Energy, density
 and `ε_B` therefore trade off along a ridge that only X-ray and radio data, or
-fixed values, can resolve. GRB 210204A shows this:
+fixed values, can resolve (next section). GRB 210204A shows this:
 
 - With `n0` and `ε_B` held at the values Kumar et al. (2022) derived from
   radio, X-ray and optical data, the ZTF light curve alone gives their `p` and
@@ -309,6 +309,41 @@ fixed values, can resolve. GRB 210204A shows this:
 - With `ε_B` free as well, `p` near 2.4 fits just as well.
 - With `n0` fixed instead at 10⁻⁵·⁶⁷ or 10⁻⁴ cm⁻³, the fits are equally good,
   with energies fifty times apart.
+
+## X-rays and radio waves
+
+The synchrotron spectrum of an afterglow has three breaks: the
+self-absorption frequency `ν_sa`, the frequency `ν_m` of the slowest
+electrons, and the cooling frequency `ν_c`. Optical light usually falls
+between `ν_m` and `ν_c`, where the flux grows with energy, density and `ε_B`
+in one particular combination. X-rays usually lie above `ν_c`, where the flux
+hardly depends on the density or `ε_B` and mostly measures the energy. Radio
+waves lie below `ν_m`, where the flux depends on all three in yet another
+combination, and below `ν_sa` the source absorbs its own radiation. Measuring
+the flux in all three windows gives as many independent combinations as
+there are unknowns.
+
+Two practical points:
+
+- **Converting X-ray counts.** Swift/XRT counts photons. Turning a count
+  rate into a flux density needs the spectrum: its photon index and the
+  absorbing column of gas. These two are correlated in a fit, and at about
+  3 keV their correlation hardly changes the conversion. The conversion's
+  remaining uncertainty is the same for every point, so the fit treats it as
+  one calibration offset with a prior, not as independent errors.
+- **Self-absorption.** `afterglowpy`'s documented spectra leave it out. The
+  package multiplies the model by `(1 − e^−τ)/τ` with `τ = (ν/ν_sa)^(−5/3)`, which
+  turns the `ν^(1/3)` spectrum below `ν_m` into `ν²` below `ν_sa`, and takes
+  `ν_sa` from Granot & Sari (2002) for a uniform medium.
+
+For GRB 210204A, adding the Swift/XRT afterglow and three uGMRT radio
+detections to the ZTF light curve shrinks the 68 % intervals, for jets
+narrower than 0.1 rad, of the density by a factor of 6.7, of `ε_B` by 3.3,
+of the energy by 2.6 and of `p` by 4. The jet's geometry stays open. A
+narrow jet seen almost on its axis and a wide one seen from near its edge fit
+equally well, with the same isotropic-equivalent energy, density, `ε_B` and
+`p`; their light curves differ only outside the data fitted, before 1 day in
+X-rays and after about 10 and 30 days in the optical and radio.
 
 ## Bayesian posteriors
 
@@ -337,6 +372,39 @@ whatever the shape of the posterior. The well-constrained rest are integrated
 in the Laplace approximation, as Gaussians around their best fit at each grid
 point, and samples are drawn from the result.
 
+## Nested sampling and the evidence
+
+A grid works for two difficult parameters, not for six. Nested sampling
+(Skilling 2004) scales further:
+
+1. It starts from points spread over the whole prior.
+2. It repeatedly replaces the point of lowest likelihood with a new one of
+   higher likelihood, so the points close in on every peak at once.
+3. Separate modes are found and weighted by how much probability they hold.
+
+Along the way it computes the evidence `Z`, the average of the likelihood
+over the prior. The ratio of two models' evidences, the Bayes factor, says
+how much the data prefer one. It rewards a good fit and penalises parameter
+space that the data do not need, so a model with an extra parameter must earn
+it. `grb_afterglow.nested` uses `nautilus` (Lange 2023), which learns the
+shape of the likelihood with small neural networks and needs few likelihood
+calls. That matters when each call integrates a jet model.
+
+The evidence depends on the prior. A mode that fits the data well but occupies
+a tiny corner of the prior holds little of the posterior. GRB 210204A shows
+both sides of this:
+
+- **The jet break.** Nested sampling recovers the two-mode posterior of the
+  break time that `grid_posterior` integrates, and the Bayes factor of the
+  broken against the single power law is `ln B` = 39.8.
+- **The jet's geometry.** Narrow and wide jets have almost equal evidence
+  (`ln B` = −0.3, narrow against wide; the wide ones reach the 0.8 rad bound
+  of the viewing-angle prior), yet under a prior uniform in `θ_core` up to
+  π/2 the wide ones hold 96 % of the posterior, because they span 94 % of
+  the `θ_core` prior.
+  Reading the posterior alone would suggest the data prefer them; the
+  evidence shows they do not.
+
 ## References
 
 - Sari, Piran & Narayan 1998, ApJ 497, L17: spectra and light curves of afterglows.
@@ -358,9 +426,14 @@ point, and samples are drawn from the result.
   affine-invariant ensemble sampling and `emcee`.
 - Ryan et al. 2020, ApJ 896, 166: `afterglowpy`, afterglows of structured jets.
 - Alard 2000, A&AS 144, 363: image subtraction with a spatially varying kernel.
+- Granot & Sari 2002, ApJ 568, 820: the break frequencies of afterglow spectra.
+- Skilling 2004, AIP Conf. Proc. 735, 395: nested sampling.
+- Lange 2023, MNRAS 525, 3181: `nautilus`, importance nested sampling with neural networks.
+- Evans et al. 2007, A&A 469, 379; Evans et al. 2009, MNRAS 397, 1177: the Swift/XRT
+  light curves and spectra of the UK Swift Science Data Centre.
 - O'Connor et al. 2023, Science Advances 9, eadi1405; Shrestha et al. 2023,
   arXiv:2302.03829: the spectral index of, and the extinction toward, GRB 221009A.
-- Kumar et al. 2022, MNRAS, arXiv:2204.07587: the afterglow and late flares of GRB 210204A.
+- Kumar et al. 2022, MNRAS 513, 2777, arXiv:2204.07587: the afterglow and late flares of GRB 210204A.
 - Bellm et al. 2019, PASP 131, 018002; Masci et al. 2019, PASP 131, 018003:
   the Zwicky Transient Facility and its data system.
 - Laskar et al. 2023, ApJL 946, L23, [doi:10.3847/2041-8213/acbfad](https://doi.org/10.3847/2041-8213/acbfad):

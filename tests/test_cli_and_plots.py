@@ -66,3 +66,8 @@ def test_sed_and_posterior_figures_render(tmp_path):
     )
     assert axes.shape == (3, 3)  # alpha, beta and the derived p
     assert (tmp_path / "post.png").stat().st_size > 0
+    other = sample_posterior(corrected, fit, n_walkers=12, n_steps=200, burn=50, seed=1)
+    fig, _ = plot_posterior(post, ["alpha", "beta"], compare=other, labels=("a", "b"), savepath=tmp_path / "two.png")
+    assert [t.get_text() for t in fig.legends[0].get_texts()] == ["a", "b"]
+    _, axes = plot_posterior(post, derived={"p": post.p("ism_slow")}, compare=other)  # p is the first's only
+    assert axes.shape == (3, 3)

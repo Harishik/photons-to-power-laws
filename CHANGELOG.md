@@ -41,7 +41,8 @@ to 0.4.0 results.
   viewing angle behind Galactic dust, fitted by least squares (several starts,
   covariance from steps matched to the uncertainties, because the model is
   computed numerically) and sampled with `emcee` under the usual priors.
-- Full CCD frames: `PipelineConfig(tiles=(nx, ny))`.
+- Full CCD frames: `PipelineConfig(photometry="psf", tiles=(nx, ny))` (with
+  aperture photometry, only the subtraction kernel is tiled).
   - `subtract_images(..., tiles=)` fits a kernel per tile and interpolates it
     across the frame (`DifferenceImage.kernel_at`).
   - `build_spatial_psf` and `psf_photometry_tiled` give a `SpatialPSF`, whose

@@ -30,3 +30,9 @@ Pan-STARRS1 data come from the PS1 public science archive at the Mikulski
 Archive for Space Telescopes (Chambers et al. 2016, arXiv:1612.05560;
 Flewelling et al. 2020, ApJS 251, 7); see the
 [PS1 acknowledgement](https://panstarrs.stsci.edu/) for the full text.
+
+The Liverpool Telescope photometry is from Laskar et al. (2023, ApJL 946, L23)
+and the Lowell, Gemini, Palomar and HST photometry from O'Connor et al. (2023,
+Science Advances 9, eadi1405); cite those papers when using these tables.
+Filter transmission curves come from the SVO Filter Profile Service (Rodrigo et
+al. 2012, 2020, 2024), as committed with the package.

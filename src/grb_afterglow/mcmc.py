@@ -203,6 +203,34 @@ def _sampled(name: str) -> bool:
     return name in ("amplitude", "t_break")
 
 
+def _log_interval(a: float, b: float) -> float:
+    """``log(Phi(b) - Phi(a))`` for a standard normal, accurate far into either tail."""
+    from scipy.special import log_ndtr
+
+    if a > 0:  # both limits in the upper tail: use the symmetric lower tail
+        a, b = -b, -a
+    hi, lo = log_ndtr(b), log_ndtr(a)
+    return float(hi + np.log1p(-np.exp(min(lo - hi, 0.0)))) if b > a else -np.inf
+
+
+def _truncated_draws(mean, cov, j, lo, hi, n, rng) -> np.ndarray:
+    """Draws from a Gaussian whose parameter ``j`` is truncated to ``[lo[j], hi[j]]`` (exact, any truncation)."""
+    from scipy.stats import truncnorm
+
+    sd = np.sqrt(cov[j, j])
+    a, b = (lo[j] - mean[j]) / sd, (hi[j] - mean[j]) / sd
+    xj = mean[j] + sd * truncnorm.rvs(a, b, size=n, random_state=rng)
+    rest = np.flatnonzero(np.arange(len(mean)) != j)
+    out = np.empty((n, len(mean)))
+    out[:, j] = xj
+    if rest.size:
+        gain = cov[rest, j] / cov[j, j]
+        cond = cov[np.ix_(rest, rest)] - np.outer(gain, cov[j, rest])
+        chol = np.linalg.cholesky(cond + 1e-15 * np.eye(rest.size) * np.trace(cond))
+        out[:, rest] = mean[rest] + np.outer(xj - mean[j], gain) + rng.standard_normal((n, rest.size)) @ chol.T
+    return out
+
+
 def grid_posterior(
     lc: LightCurve,
     fit: FitResult,
@@ -231,9 +259,11 @@ def grid_posterior(
     grid
         Grid values per parameter in natural units, e.g.
         ``{"t_break": np.geomspace(t0, t1, 60), "alpha1": np.linspace(-3, 6, 91)}``.
+        Values are sorted (and duplicates dropped); ``t_break`` is in seconds.
         The grid should cover the prior range wherever the posterior is not
         negligible, and resolve it where it is narrow (spacing may be uneven);
-        check that a finer grid gives the same result.
+        check that a finer grid gives the same result. A single value fixes
+        that parameter.
     sys_err
         Fractional systematic error floor, as in the fit.
     n_samples, seed
@@ -262,9 +292,18 @@ def grid_posterior(
     def to_natural(n, v):
         return 10.0**v if _sampled(n) else v
 
-    # Grid in sampled units, with the prior volume of each cell.
-    axes = [np.log10(np.asarray(grid[n], float)) if _sampled(n) else np.asarray(grid[n], float) for n in fixed]
-    widths = [np.gradient(a) if a.size > 1 else np.ones(1) for a in axes]
+    # Grid in sampled units, with the prior volume of each cell (a single value is a fixed parameter).
+    def axis(n):
+        values = np.asarray(grid[n], dtype=float)
+        return np.unique(np.log10(values) if _sampled(n) else values)
+
+    axes = [axis(n) for n in fixed]
+    widths = [np.gradient(a) if a.size > 1 else np.zeros(1) for a in axes]
+    grid_sigma = {
+        k: fit.priors[n[len(OFFSET_PREFIX) :]]
+        for k, n in enumerate(fixed)
+        if n.startswith(OFFSET_PREFIX) and n[len(OFFSET_PREFIX) :] in fit.priors
+    }
     lo = np.array([bounds(n)[0] for n in free])
     hi = np.array([bounds(n)[1] for n in free])
     prior_sigma = np.array(
@@ -273,7 +312,7 @@ def grid_posterior(
     has_prior = np.isfinite(prior_sigma)
     start = np.array([np.log10(fit.params[n]) if _sampled(n) else fit.params[n] for n in free])
 
-    nodes, log_mass, means, covs = [], [], [], []
+    nodes, log_mass, means, covs, pins = [], [], [], [], []
     x0 = start
     for index in itertools.product(*(range(a.size) for a in axes)):
         values = {n: to_natural(n, axes[k][i]) for k, (n, i) in enumerate(zip(fixed, index, strict=True))}
@@ -292,21 +331,44 @@ def grid_posterior(
         sign, logdet = np.linalg.slogdet(hess)
         if sign <= 0:
             continue
-        volume = np.prod([w[i] for w, i in zip(widths, index, strict=True)])
+        cov = np.linalg.inv(hess)
+        cost, centre, pinned, log_in = best.cost, best.x, -1, 0.0
+        active = np.flatnonzero(best.active_mask)
+        if active.size == 1:
+            # One parameter held at its bound by the data: the quadratic approximation there is a Gaussian centred
+            # beyond the bound and truncated by it. Its mass inside the bounds is that of the full Gaussian times
+            # the probability of the parameter's marginal lying within its bounds; it is sampled exactly below.
+            grad = best.jac.T @ best.fun
+            shift = np.linalg.solve(hess, grad)
+            cost, centre, pinned = best.cost - 0.5 * float(grad @ shift), best.x - shift, int(active[0])
+            sd = np.sqrt(cov[pinned, pinned])
+            log_in = _log_interval((lo[pinned] - centre[pinned]) / sd, (hi[pinned] - centre[pinned]) / sd)
+        volume = np.prod([w[i] if w[i] > 0 else 1.0 for w, i in zip(widths, index, strict=True)])
+        prior = sum((axes[k][index[k]] / sigma) ** 2 for k, sigma in grid_sigma.items())  # gridded offsets
         nodes.append([a[i] for a, i in zip(axes, index, strict=True)])
-        log_mass.append(-best.cost - 0.5 * logdet + np.log(volume))
-        means.append(best.x)
-        covs.append(np.linalg.inv(hess))
+        log_mass.append(-cost - 0.5 * prior - 0.5 * logdet + np.log(volume) + log_in)
+        means.append(centre)
+        covs.append(cov)
+        pins.append(pinned)
     if not nodes:
         raise RuntimeError("No grid point gave a usable fit.")
 
+    nodes, means, covs, pins = np.asarray(nodes), np.asarray(means), np.asarray(covs), np.asarray(pins)
     weights = np.exp(np.asarray(log_mass) - np.max(log_mass))
+    for k, name in enumerate(fixed):  # cells wholly outside the prior range carry no weight
+        b = bounds(name)
+        half = 0.5 * widths[k][np.searchsorted(axes[k], nodes[:, k])]
+        weights *= (nodes[:, k] + half >= b[0]) & (nodes[:, k] - half <= b[1])
+    if not weights.sum() > 0:
+        raise ValueError("The grid lies outside the prior range (t_break is in seconds, within the data's time span).")
     weights /= weights.sum()
     rng = np.random.default_rng(seed)
-    nodes, means, covs = np.asarray(nodes), np.asarray(means), np.asarray(covs)
     samples = np.empty((n_samples, len(names)))
-    filled = 0
+    filled, passes = 0, 0
     while filled < n_samples:
+        passes += 1
+        if passes > 1000 and filled < 0.01 * n_samples:
+            raise RuntimeError("Almost every draw falls outside the prior bounds; grid the bounded parameter instead.")
         n = n_samples - filled
         cell = rng.choice(len(weights), size=n, p=weights)
         # Spread grid values uniformly within their cells, and draw the others from their Gaussians.
@@ -315,6 +377,9 @@ def grid_posterior(
         )
         chol = np.linalg.cholesky(covs[cell])
         free_part = means[cell] + np.einsum("nij,nj->ni", chol, rng.standard_normal((n, len(free))))
+        for c in np.unique(cell[pins[cell] >= 0]):  # truncated draws for cells with a pinned parameter
+            sel = np.flatnonzero(cell == c)
+            free_part[sel] = _truncated_draws(means[c], covs[c], pins[c], lo, hi, sel.size, rng)
         ok = np.all((free_part >= lo) & (free_part <= hi), axis=1)
         for k, name in enumerate(fixed):
             b = bounds(name)

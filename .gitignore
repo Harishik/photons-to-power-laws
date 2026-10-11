@@ -24,3 +24,6 @@ p2pl_demo/
 .idea/
 .vscode/
 *.swp
+
+# Full-frame demo downloads (dev/full_frame/run_full_frame.py)
+dev/full_frame/data/

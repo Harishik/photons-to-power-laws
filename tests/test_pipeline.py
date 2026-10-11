@@ -4,35 +4,15 @@ import json
 
 import numpy as np
 import pytest
-from astropy import units as u
-from astropy.coordinates import SkyCoord
-from astropy.table import Table
 
 from grb_afterglow import (
     PipelineConfig,
-    build_master_bias,
-    build_master_flat,
     evaluate_closure_relations,
     fit_lightcurve,
     run_pipeline,
 )
 from grb_afterglow.calibration import calibrate_frame, load_fits
 from grb_afterglow.pipeline import Template, header_time_since_trigger, reduce_frame
-
-
-@pytest.fixture(scope="module")
-def calibration(small_campaign):
-    out, truth = small_campaign
-    raw = out / "raw"
-    bias = build_master_bias([load_fits(p)[0] for p in sorted(raw.glob("bias_*.fits"))])
-    flats = {
-        b: build_master_flat([load_fits(p)[0] for p in sorted(raw.glob(f"flat_{b}_*.fits"))], master_bias=bias)
-        for b in ("g", "r")
-    }
-    catalog = Table.read(out / "catalog.csv", format="ascii.csv")
-    target = SkyCoord(truth["afterglow"]["ra"] * u.deg, truth["afterglow"]["dec"] * u.deg)
-    templates = {b: out / info["file"] for b, info in truth["templates"].items()}
-    return raw, bias, flats, catalog, target, templates
 
 
 @pytest.fixture(scope="module")

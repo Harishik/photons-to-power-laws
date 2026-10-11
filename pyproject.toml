@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "grb-afterglow"
-version = "0.4.0"
+version = "0.5.0"
 description = "Photons to Power Laws: from raw telescope frames to GRB afterglow physics."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -43,6 +43,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0", "pytest-cov>=4.0", "ruff>=0.5"]
+models = ["afterglowpy>=0.8"]
 
 [project.scripts]
 p2pl = "grb_afterglow.cli:main"

@@ -5,16 +5,18 @@ type: software
 authors:
   - given-names: "Harishik Dev Singh"
     family-names: "Jamwal"
-version: 0.4.0
-date-released: 2026-10-10
+version: 0.5.0
+date-released: 2026-10-11
 license: MIT
 repository-code: "https://github.com/Harishik/photons-to-power-laws"
 abstract: >-
   A Python pipeline that takes raw optical frames of a gamma-ray burst
   afterglow through calibration, source detection, catalog-based photometric
   calibration with colour terms, image subtraction against a deep template,
-  empirical-PSF or aperture photometry, dust-extinction corrections, and
-  multi-band light-curve fitting with MCMC posteriors,
+  empirical-PSF or aperture photometry (with a PSF and kernel that vary across
+  full CCD frames), dust-extinction corrections, multi-band and
+  multi-instrument light-curve fitting through filter transmission curves with
+  MCMC and grid posteriors, and physical jet models with afterglowpy,
   and tests the fitted temporal and spectral indices against the closure
   relations of the standard fireball model. It is validated on simulated data
   with known ground truth and applied to public ZTF images of GRB 221009A and GRB 210204A.

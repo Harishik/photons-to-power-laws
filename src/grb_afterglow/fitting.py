@@ -149,7 +149,8 @@ class FitResult:
         """Evaluate the best-fit model at times ``t`` (s) and single frequencies ``nu`` (Hz).
 
         The spectrum is evaluated at ``nu`` itself, including any dust in the
-        model; use :meth:`predict_band` for the flux measured through a filter.
+        model (Galactic dust is negligible in the radio and not applied in the
+        X-ray); use :meth:`predict_band` for the flux measured through a filter.
         """
         p = self.params
         flux = self.temporal(t)

@@ -26,6 +26,14 @@ refinements keep the fit unbiased when the convolved image is noisy:
   where the data carry no information;
 * iterative sigma clipping of the transient, variable stars and cosmic rays;
 * a refit of the photometric scale on bright pixels only.
+
+Across a full CCD frame the PSFs, and so the kernel, change with position.
+With ``tiles=(nx, ny)`` a kernel is fitted in every tile and the kernel at each
+pixel is the bilinear interpolation of the kernels at the surrounding tile
+centres. Because convolution is linear, convolving with that interpolated
+kernel equals blending the tile convolutions with the same weights, which is
+how it is computed (the idea of Alard 2000, A&AS 144, 363, with tiles in
+place of a polynomial in position).
 """
 
 from __future__ import annotations
@@ -39,6 +47,7 @@ from astropy.wcs.utils import proj_plane_pixel_area
 from scipy import linalg, ndimage
 
 FWHM_TOLERANCE = 0.05  # relative FWHM difference treated as matched seeing
+MAX_FIT_PIXELS = 150_000  # pixels per kernel fit; larger regions keep those near stars plus a sample of sky
 _RHO_HALF = 2  # half-size of the stored noise autocorrelation of a resampled image
 
 
@@ -74,6 +83,11 @@ class DifferenceImage:
     info
         Method diagnostics: ``flux_ratio`` (template counts per science count),
         ``kernel_half``, ``n_fit`` (pixels in the kernel fit) and ``reg_scale``.
+    kernels, tile_x, tile_y
+        For a spatially varying kernel (``tiles`` in :func:`subtract_images`):
+        the kernel of every tile, ``kernels[j][i]`` for the tile centred at
+        ``(tile_x[i], tile_y[j])``. ``kernel`` is then the kernel at the frame
+        centre; use :meth:`kernel_at` for any other position.
     """
 
     data: np.ndarray
@@ -84,6 +98,16 @@ class DifferenceImage:
     kernel: np.ndarray | None = None
     variance: np.ndarray | None = None
     info: dict = field(default_factory=dict)
+    kernels: list | None = field(default=None, repr=False)
+    tile_x: np.ndarray | None = field(default=None, repr=False)
+    tile_y: np.ndarray | None = field(default=None, repr=False)
+
+    def kernel_at(self, x: float, y: float) -> np.ndarray | None:
+        """The matching kernel at pixel ``(x, y)``: bilinear interpolation between tile kernels."""
+        if self.kernels is None:
+            return self.kernel
+        wx, wy = _tent_weights(np.array([x]), self.tile_x)[:, 0], _tent_weights(np.array([y]), self.tile_y)[:, 0]
+        return sum(wy[j] * wx[i] * k for j, row in enumerate(self.kernels) for i, k in enumerate(row))
 
     def as_difference_psf(self, image: np.ndarray) -> np.ndarray:
         """Give a science-grid image the PSF of the difference image.
@@ -97,7 +121,10 @@ class DifferenceImage:
         image = np.asarray(image, dtype=float)
         if self.psf_from == "science" or self.kernel is None:
             return image
-        return ndimage.correlate(image, self.kernel / self.kernel.sum(), mode="nearest")
+        if self.kernels is None:
+            return ndimage.correlate(image, self.kernel / self.kernel.sum(), mode="nearest")
+        normalised = [[k / k.sum() for k in row] for row in self.kernels]
+        return _blend(image, normalised, self.tile_x, self.tile_y, mode="nearest")
 
 
 def _source_coords(wcs_from: WCS, wcs_to: WCS, shape: tuple[int, int]) -> np.ndarray:
@@ -363,6 +390,117 @@ def refine_scale(
     return kernel * scale / kernel.sum(), fit_background(scale)
 
 
+def _tile_edges(n: int, count: int) -> np.ndarray:
+    return np.linspace(0, n, count + 1).round().astype(int)
+
+
+def _tent_weights(coords: np.ndarray, centres: np.ndarray) -> np.ndarray:
+    """Linear-interpolation weights of ``coords`` between ``centres`` (constant beyond the end ones).
+
+    Returns an array ``(len(centres), len(coords))`` whose columns sum to one.
+    """
+    coords = np.asarray(coords, dtype=float)
+    w = np.zeros((len(centres), coords.size))
+    if len(centres) == 1:
+        w[0] = 1.0
+        return w
+    c = np.clip(coords, centres[0], centres[-1])
+    k = np.clip(np.searchsorted(centres, c, side="right") - 1, 0, len(centres) - 2)
+    f = (c - centres[k]) / (centres[k + 1] - centres[k])
+    w[k, np.arange(c.size)] = 1.0 - f
+    w[k + 1, np.arange(c.size)] += f
+    return w
+
+
+def _blend(image: np.ndarray, kernels, tile_x, tile_y, *, mode: str = "constant") -> np.ndarray:
+    """Correlate ``image`` with a kernel interpolated bilinearly between tile centres."""
+    ny, nx = image.shape
+    wx, wy = _tent_weights(np.arange(nx), tile_x), _tent_weights(np.arange(ny), tile_y)
+    out = np.zeros_like(image, dtype=float)
+    for j, row in enumerate(kernels):
+        rows = np.flatnonzero(wy[j] > 0)
+        for i, kernel in enumerate(row):
+            cols = np.flatnonzero(wx[i] > 0)
+            if rows.size == 0 or cols.size == 0:
+                continue
+            h = kernel.shape[0] // 2
+            y0, y1 = max(rows[0] - h, 0), min(rows[-1] + h + 1, ny)
+            x0, x1 = max(cols[0] - h, 0), min(cols[-1] + h + 1, nx)
+            conv = ndimage.correlate(image[y0:y1, x0:x1], kernel, mode=mode)
+            sy, sx = slice(rows[0] - y0, rows[-1] + 1 - y0), slice(cols[0] - x0, cols[-1] + 1 - x0)
+            weight = np.outer(wy[j][rows[0] : rows[-1] + 1], wx[i][cols[0] : cols[-1] + 1])
+            out[rows[0] : rows[-1] + 1, cols[0] : cols[-1] + 1] += weight * conv[sy, sx]
+    return out
+
+
+def _poly_on(shape: tuple[int, int], y0: int, x0: int, sub: tuple[int, int], degree: int) -> list[np.ndarray]:
+    """Polynomial terms on a sub-array at ``(y0, x0)`` of size ``sub``, in the coordinates of the full frame."""
+    ny, nx = shape
+    yy, xx = np.mgrid[y0 : y0 + sub[0], x0 : x0 + sub[1]]
+    u = (xx - (nx - 1) / 2) / max((nx - 1) / 2, 1)
+    v = (yy - (ny - 1) / 2) / max((ny - 1) / 2, 1)
+    return [u**i * v**j for i in range(degree + 1) for j in range(degree + 1 - i)]
+
+
+def _informative(mask: np.ndarray, conv: np.ndarray, conv_var: np.ndarray, half: int, cap: int, seed: int = 0):
+    """At most ``cap`` pixels of ``mask`` for a kernel fit: those near sources first, then a sample of sky.
+
+    Only pixels within a kernel half-width of a source in the convolved image
+    constrain the kernel; sky pixels constrain the differential background
+    alone. Large regions (full frames) are thinned accordingly.
+    """
+    if mask.sum() <= cap:
+        return mask
+    rng = np.random.default_rng(seed)
+    bright = ndimage.uniform_filter(conv, 3) > 5.0 * np.sqrt(np.maximum(conv_var, 0.0) / 9.0)
+    near = ndimage.binary_dilation(bright, iterations=half) & mask
+    out = np.zeros_like(mask)
+    for region, share in ((near, 0.8), (mask & ~near, 0.2)):
+        idx = np.flatnonzero(region)
+        take = min(idx.size, int(share * cap))
+        out.flat[rng.choice(idx, size=take, replace=False) if take < idx.size else idx] = True
+    return out
+
+
+def _fit_tiles(conv0, target, cvar, tvar, usable, half, tiles, *, rho, degree, lam, clip, convolve_science):
+    """Kernel and background in every tile; the background is returned as frame-coordinate polynomial coefficients."""
+    ny, nx = target.shape
+    xe, ye = _tile_edges(nx, tiles[0]), _tile_edges(ny, tiles[1])
+    kernels, coefs, n_fit, reg = [], [], 0, []
+    for j in range(tiles[1]):
+        row_k, row_c = [], []
+        for i in range(tiles[0]):
+            y0, y1 = max(ye[j] - half, 0), min(ye[j + 1] + half, ny)
+            x0, x1 = max(xe[i] - half, 0), min(xe[i + 1] + half, nx)
+            inner = np.zeros((y1 - y0, x1 - x0), dtype=bool)
+            inner[ye[j] - y0 : ye[j + 1] - y0, xe[i] - x0 : xe[i + 1] - x0] = True
+            sl = (slice(y0, y1), slice(x0, x1))
+            mask = _informative(usable[sl] & inner, conv0[sl], cvar[sl], half, MAX_FIT_PIXELS)
+            if mask.sum() < 20 * (2 * half + 1) ** 2:
+                raise ValueError(f"Tile ({i}, {j}) has too few usable pixels for a kernel; use fewer tiles.")
+            fit = fit_kernel(
+                conv0[sl], target[sl], cvar[sl], tvar[sl], mask, half, rho=rho, degree=degree, lam=lam, clip=clip
+            )
+            if convolve_science:
+                deep, deep_var = target[sl] - fit["background"], tvar[sl]
+            else:
+                deep = ndimage.correlate(conv0[sl], fit["kernel"], mode="constant")
+                deep_var = cvar[sl] * fit["kernel"].sum() ** 2
+            kernel, background = refine_scale(
+                conv0[sl], target[sl], fit["kernel"], fit["mask"], deep, deep_var, degree=degree, target_var=tvar[sl]
+            )
+            terms = _poly_on((ny, nx), y0, x0, (y1 - y0, x1 - x0), degree)
+            design = np.array([t[inner] for t in terms]).T
+            row_k.append(kernel)
+            row_c.append(np.linalg.lstsq(design, background[inner], rcond=None)[0])
+            n_fit += fit["n_fit"]
+            reg.append(fit["reg_scale"])
+        kernels.append(row_k)
+        coefs.append(row_c)
+    centres_x, centres_y = 0.5 * (xe[:-1] + xe[1:]) - 0.5, 0.5 * (ye[:-1] + ye[1:]) - 0.5
+    return kernels, coefs, centres_x, centres_y, n_fit, float(np.nanmax(reg))
+
+
 def kernel_half_width(science_fwhm: float, template_fwhm: float) -> int:
     """Kernel half-width (3-7 px): 1.5 times the larger FWHM covers Moffat-like wings."""
     return int(np.clip(np.ceil(1.5 * max(science_fwhm, template_fwhm)), 3, 7))
@@ -383,6 +521,7 @@ def subtract_images(
     degree: int = 1,
     lam: float = 0.01,
     clip: float = 4.0,
+    tiles: tuple[int, int] | None = None,
 ) -> DifferenceImage:
     """Subtract a PSF- and flux-matched template from a science image.
 
@@ -412,6 +551,11 @@ def subtract_images(
         Degree of the polynomial differential background.
     lam, clip
         Regularisation strength and clipping threshold, see :func:`fit_kernel`.
+    tiles
+        ``(nx, ny)``: fit a kernel and background in each of ``nx`` by ``ny``
+        tiles and interpolate the kernel bilinearly between tile centres, for
+        full frames whose PSFs change across the field. Each tile needs enough
+        stars to constrain its kernel.
     """
     sci = np.asarray(science, dtype=float)
     shape = sci.shape
@@ -438,6 +582,13 @@ def subtract_images(
     cvar = np.where(cvalid, cvar, 0.0)
     good = ndimage.binary_erosion(cvalid, np.ones((2 * half + 1,) * 2, bool), border_value=0) & tvalid
     usable = good if exclude is None else good & ~np.asarray(exclude, dtype=bool)
+    if tiles is not None and tuple(tiles) != (1, 1):
+        return _subtract_tiled(
+            conv0, target, cvar, tvar, usable, good, half, (int(tiles[0]), int(tiles[1])), sky,
+            rho=rho, degree=degree, lam=lam, clip=clip, convolve_science=convolve_science,
+            fwhm=float(template_fwhm if convolve_science else science_fwhm),
+        )  # fmt: skip
+    usable = _informative(usable, conv0, cvar, half, MAX_FIT_PIXELS)
     fit = fit_kernel(conv0, target, cvar, tvar, usable, half, rho=rho, degree=degree, lam=lam, clip=clip)
     kernel, background = fit["kernel"], fit["background"]
     if convolve_science:
@@ -480,4 +631,60 @@ def subtract_images(
             "n_fit": fit["n_fit"],
             "reg_scale": fit["reg_scale"],
         },
+    )
+
+
+def _subtract_tiled(
+    conv0, target, cvar, tvar, usable, good, half, tiles, sky, *, rho, degree, lam, clip, convolve_science, fwhm
+) -> DifferenceImage:
+    """:func:`subtract_images` with a kernel and background per tile, interpolated across the frame."""
+    shape = target.shape
+    kernels, coefs, tile_x, tile_y, n_fit, reg = _fit_tiles(
+        conv0, target, cvar, tvar, usable, half, tiles,
+        rho=rho, degree=degree, lam=lam, clip=clip, convolve_science=convolve_science,
+    )  # fmt: skip
+    wx, wy = _tent_weights(np.arange(shape[1]), tile_x), _tent_weights(np.arange(shape[0]), tile_y)
+
+    def field(values):  # a per-tile quantity interpolated bilinearly over the frame
+        return wy.T @ np.asarray(values, dtype=float) @ wx
+
+    coef = np.array(coefs)  # (ny_tiles, nx_tiles, n_terms)
+    background = sum(field(coef[:, :, k]) * t for k, t in enumerate(_poly_terms(shape, degree)))
+    scale = field([[k.sum() for k in row] for row in kernels])
+    matched = _blend(conv0, kernels, tile_x, tile_y) + background
+
+    def noise_kernel(kernel):  # kernel**2, scaled for the noise correlation of a resampled template
+        if rho is None:
+            return kernel**2
+        acf = ndimage.correlate(np.pad(kernel, _RHO_HALF), kernel, mode="constant")
+        c = _RHO_HALF + half
+        window = acf[c - _RHO_HALF : c + _RHO_HALF + 1, c - _RHO_HALF : c + _RHO_HALF + 1]
+        return kernel**2 * float(np.sum(window * rho) / np.sum(kernel**2))
+
+    var_m = _blend(cvar, [[noise_kernel(k) for k in row] for row in kernels], tile_x, tile_y)
+    if convolve_science:
+        diff = (matched - target) / scale
+        var = (var_m + tvar) / scale**2
+        subtracted = (target - background) / scale + sky
+        psf_from = "template"
+    else:
+        diff = target - matched
+        var = var_m + tvar
+        subtracted = matched
+        psf_from = "science"
+    centre = DifferenceImage(diff, fwhm, psf_from, subtracted, good, kernels=kernels, tile_x=tile_x, tile_y=tile_y)
+    kernel = centre.kernel_at((shape[1] - 1) / 2, (shape[0] - 1) / 2)
+    ratio = float(np.median(scale[good])) if convolve_science else float(1.0 / np.median(scale[good]))
+    return DifferenceImage(
+        data=np.where(good, diff, np.nan),
+        fwhm=fwhm,
+        psf_from=psf_from,
+        matched_template=subtracted,
+        valid=good,
+        kernel=kernel,
+        variance=np.where(good, var, np.nan),
+        info={"flux_ratio": ratio, "kernel_half": half, "n_fit": n_fit, "reg_scale": reg, "tiles": tiles},
+        kernels=kernels,
+        tile_x=tile_x,
+        tile_y=tile_y,
     )

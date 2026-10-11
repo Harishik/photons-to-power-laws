@@ -25,8 +25,8 @@ python case_studies/grb221009a/fetch_data.py   # optional: rebuild data/ from IR
 - **Liverpool Telescope** griz photometry from Table 2 of Laskar et al. (2023),
   for comparison and for the spectral index.
 - **Lowell, Gemini, Palomar and HST** optical and near-infrared photometry
-  from [O'Connor et al. (2023)](https://doi.org/10.1126/sciadv.adi1405), for
-  the spectral index.
+  from [O'Connor et al. (2023)](https://doi.org/10.1126/sciadv.adi1405). The
+  Lowell and Gemini points before 20 days go into the spectral index.
 - The **transmission curves** of every filter involved come from the package's
   filter registry (SVO Filter Profile Service).
 
@@ -129,7 +129,7 @@ the spectral index is measured from 62 points in 12 bands:
 After 20 days a supernova may start to contribute ([Fulton et al.
 2023](https://arxiv.org/abs/2301.11170) discuss one emerging at about that
 time), so the later Palomar and HST photometry is
-not used. The bands come from five instruments calibrated against two
+not used. The bands come from four instruments calibrated against two
 catalogues, so the fit is set up as follows:
 
 - **Filter curves.** Each measurement is modelled through its own
@@ -137,9 +137,9 @@ catalogues, so the fit is set up as follows:
   SDSS-type and not in the SVO service, so the SDSS curves stand in for them.
 - **Calibration offsets.** Every band except Liverpool r, which sets the flux
   scale, has a zero-point offset with a Gaussian prior: 0.03 mag for the
-  optical bands, which are calibrated to Pan-STARRS1 without colour terms, and
-  0.05 mag for the near-infrared bands, which are calibrated to 2MASS and
-  converted from Vega to AB.
+  optical bands (Liverpool and Lowell are calibrated to Pan-STARRS1, without
+  colour terms), and 0.05 mag for the near-infrared bands, which are
+  calibrated to 2MASS and converted from Vega to AB.
 - **Error floor.** A 2 % error floor is added to every point.
 
 | Data, model | beta | ± E(B−V) | chi²/dof |
@@ -153,8 +153,11 @@ catalogues, so the fit is set up as follows:
 
 With the near infrared, beta = 0.66 ± 0.03 (statistical and calibration)
 ± 0.13 (E(B−V)) ± 0.05 (photometric system). That agrees with O'Connor et al.
-at 0.1σ and Laskar et al. at 0.7σ, but it is not an independent measurement:
-O'Connor et al. analysed most of the same photometry.
+at 0.1σ and Laskar et al. at 0.7σ. Neither comparison is independent:
+
+- 19 of the 62 points are O'Connor et al.'s: the Lowell and Gemini ones,
+  including all of the near infrared;
+- the other 43 are Laskar et al.'s Liverpool photometry.
 
 The table shows what the near infrared buys:
 

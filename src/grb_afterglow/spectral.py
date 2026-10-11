@@ -37,7 +37,10 @@ _LN10_04 = 0.4 * np.log(10.0)
 def _quadrature(bp: Bandpass) -> tuple[np.ndarray, np.ndarray]:
     """Wavelengths and weights of ``∫ f T dlambda / lambda / ∫ T dlambda / lambda`` (trapezoid rule)."""
     lam, t = bp.wavelength_nm, bp.transmission
-    inside = np.flatnonzero(t > 1e-4)
+    peak = t.max() if t.size else 0.0
+    if not peak > 0:
+        raise ValueError(f"Bandpass {bp.name!r} has no positive transmission.")
+    inside = np.flatnonzero(t > 1e-4 * peak)  # relative: a curve's normalisation is irrelevant
     lo, hi = max(inside[0] - 1, 0), min(inside[-1] + 1, lam.size - 1)
     lam, t = lam[lo : hi + 1], t[lo : hi + 1]
     if lam.size > _MAX_SAMPLES:
@@ -151,11 +154,24 @@ class SpectralModel:
         return self._cache[band]
 
     def galactic_extinction(self, wavelength_nm) -> np.ndarray:
-        """Milky Way extinction (mag) at observed wavelengths."""
+        """Milky Way extinction (mag) at observed wavelengths.
+
+        CCM89 between 100 nm and 3.3 micron; its infrared power law continued to
+        longer wavelengths (toward zero in the radio); none shortward of 100 nm,
+        where absorption by gas, which is not modelled, dominates anyway. So a
+        fit can be evaluated at X-ray or radio frequencies.
+        """
         lam = np.asarray(wavelength_nm, dtype=float)
         if not self.ebv_mw:
             return np.zeros_like(lam)
-        return self.r_v * self.ebv_mw * ccm89(lam, self.r_v)
+        flat = np.atleast_1d(lam).astype(float)
+        x = 1000.0 / flat  # inverse microns
+        curve = np.zeros_like(flat)
+        ok = (x >= 0.3) & (x <= 10.0)
+        curve[ok] = ccm89(flat[ok], self.r_v)
+        ir = x < 0.3
+        curve[ir] = (0.574 - 0.527 / self.r_v) * x[ir] ** 1.61
+        return (self.r_v * self.ebv_mw * curve).reshape(lam.shape)
 
     def host_curve(self, wavelength_nm) -> np.ndarray:
         """Host ``A_lambda / A_V`` at observed wavelengths (zero without a redshift)."""

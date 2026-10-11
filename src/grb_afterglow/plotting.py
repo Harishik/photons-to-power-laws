@@ -187,6 +187,8 @@ def plot_lightcurve(
     fit: FitResult | None = None,
     *,
     alternative: FitResult | None = None,
+    alternative_label: str = "single power law",
+    alternative_band: str | None = None,
     extra: Sequence[tuple[LightCurve, str]] = (),
     band_labels: dict[str, str] | None = None,
     model_range: tuple[float, float] | None = None,
@@ -213,7 +215,8 @@ def plot_lightcurve(
     fit
         Best-fit model, drawn per band.
     alternative
-        A competing model (e.g. a single power law), drawn dashed for comparison.
+        A competing model (e.g. a single power law), drawn dashed for comparison
+        in ``alternative_band`` (default: the bluest band), with ``alternative_label``.
     extra
         Additional ``(LightCurve, label)`` data sets, e.g. literature photometry,
         drawn as hollow neutral markers for comparison.
@@ -314,13 +317,13 @@ def plot_lightcurve(
         if alternative is not None:
             ax.plot(
                 grid_days,
-                band_model(alternative, grid_days * SECONDS_PER_DAY, bands[0], wavelengths_nm),
+                band_model(alternative, grid_days * SECONDS_PER_DAY, alternative_band or bands[0], wavelengths_nm),
                 color=t.muted,
                 lw=1.3,
                 ls=(0, (5, 3)),
                 zorder=2,
             )
-            handles.append(Line2D([], [], color=t.muted, lw=1.3, ls=(0, (5, 3)), label="single power law"))
+            handles.append(Line2D([], [], color=t.muted, lw=1.3, ls=(0, (5, 3)), label=alternative_label))
 
         if fit is not None and "t_break" in fit.params:
             tb, tb_err = fit.params["t_break"] / SECONDS_PER_DAY, fit.errors["t_break"] / SECONDS_PER_DAY
@@ -831,6 +834,13 @@ _PARAM_LABELS = {
     "beta": r"$\beta$",
     "host_av": r"$A_{V,\rm host}$",
     "p": r"$p$",
+    "log10_E0": r"$\log_{10} E_0$",
+    "theta_core": r"$\theta_{\rm core}$",
+    "theta_obs": r"$\theta_{\rm obs}$",
+    "theta_wing": r"$\theta_{\rm wing}$",
+    "log10_n0": r"$\log_{10} n_0$",
+    "log10_eps_e": r"$\log_{10} \epsilon_e$",
+    "log10_eps_B": r"$\log_{10} \epsilon_B$",
 }
 
 
@@ -847,6 +857,7 @@ def plot_posterior(
     *,
     derived: dict[str, np.ndarray] | None = None,
     truths: dict[str, float] | None = None,
+    truths_label: str = "injected",
     title: str | None = None,
     theme: str = "light",
     savepath: str | PathLike[str] | None = None,
@@ -863,7 +874,8 @@ def plot_posterior(
     derived
         Extra sample arrays to show, e.g. ``{"p": posterior.p("jet_slow")}``.
     truths
-        Reference values (e.g. injected parameters), drawn as lines.
+        Reference values (e.g. injected parameters), drawn as lines and kept
+        within the axis ranges; ``truths_label`` names them in the legend.
     """
     from scipy.ndimage import gaussian_filter
 
@@ -877,8 +889,11 @@ def plot_posterior(
         accent = t.series[0]
         fig, axes = plt.subplots(k, k, figsize=(1.75 * k + 0.7, 1.75 * k + 0.7), squeeze=False)
         ranges = []
-        for x in data:
+        for name, x in zip(params, data, strict=True):
             lo, hi = np.percentile(x, [0.2, 99.8])
+            ref = (truths or {}).get(name)
+            if ref is not None and np.isfinite(ref):
+                lo, hi = min(lo, ref), max(hi, ref)
             pad = 0.08 * (hi - lo or abs(lo) or 1.0)
             ranges.append((lo - pad, hi + pad))
         for i in range(k):
@@ -934,7 +949,7 @@ def plot_posterior(
                     ax.set_ylabel(_PARAM_LABELS.get(params[i], params[i]))
         if truths:
             fig.legend(
-                handles=[Line2D([], [], color=t.series[2], lw=1.2, label="injected")],
+                handles=[Line2D([], [], color=t.series[2], lw=1.2, label=truths_label)],
                 loc="upper right",
                 bbox_to_anchor=(0.98, 0.98),
             )

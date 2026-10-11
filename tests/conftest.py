@@ -43,3 +43,26 @@ def small_campaign(tmp_path_factory):
     )
     truth = generate_dataset(out, config=config, seed=7)
     return out, truth
+
+
+@pytest.fixture(scope="session")
+def calibration(small_campaign):
+    """Master bias and flats, catalog, target and templates of the small campaign."""
+    from astropy import units as u
+    from astropy.coordinates import SkyCoord
+    from astropy.table import Table
+
+    from grb_afterglow import build_master_bias, build_master_flat
+    from grb_afterglow.calibration import load_fits
+
+    out, truth = small_campaign
+    raw = out / "raw"
+    bias = build_master_bias([load_fits(p)[0] for p in sorted(raw.glob("bias_*.fits"))])
+    flats = {
+        b: build_master_flat([load_fits(p)[0] for p in sorted(raw.glob(f"flat_{b}_*.fits"))], master_bias=bias)
+        for b in ("g", "r")
+    }
+    catalog = Table.read(out / "catalog.csv", format="ascii.csv")
+    target = SkyCoord(truth["afterglow"]["ra"] * u.deg, truth["afterglow"]["dec"] * u.deg)
+    templates = {b: out / info["file"] for b, info in truth["templates"].items()}
+    return raw, bias, flats, catalog, target, templates

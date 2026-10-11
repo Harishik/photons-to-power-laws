@@ -54,7 +54,7 @@ the r = 17.11 of the discovery circular.
 | | This pipeline (ZTF only, posterior median and 68 %) | Kumar et al. (2022) |
 |---|---:|---:|
 | Preferred model | broken power law (ΔBIC = 83 over a single one) | jet break |
-| Early decay, alpha1 | 0.50 +0.05 −1.47 | ≈ 0.33 |
+| Early decay, alpha1 | 0.50 +0.05 −1.46 | ≈ 0.33 |
 | Break time | 0.95 ± 0.88 d (two modes, below) | 0.37 ± 0.30 d |
 | Late decay, alpha2 | 1.28 +0.47 −0.16 | 1.18 ± 0.03 |
 | Spectral index, beta | 0.93 ± 0.19 | ≈ 0.75 (optical to X-ray) |
@@ -112,6 +112,70 @@ ZTF's 30 s exposures are not deep enough to detect them on their own.
 
 Per-epoch measurements are in [`results/ztf_photometry.csv`](results/ztf_photometry.csv)
 and every number above in [`results/summary.json`](results/summary.json).
+
+## A physical model of the jet
+
+Kumar et al. fitted a top-hat jet with `afterglowpy` to radio, X-ray and
+optical data. `physical_model.py` fits the same model to the ZTF light curve
+alone, before 8 days:
+
+```bash
+pip install -e ".[models]"
+python case_studies/grb210204a/physical_model.py   # ~20 minutes, mostly MCMC
+```
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="figures/physical_model_dark.png">
+  <img src="figures/physical_model_light.png" alt="GRB 210204A ZTF light curve with a top-hat jet model fitted to it and the Kumar et al. model for comparison" width="100%">
+</picture>
+
+**Their model against our photometry.** Kumar et al.'s posterior medians,
+evaluated at the ZTF epochs, give chi² = 58 for 16 points. The shape matches,
+but the ZTF fluxes are 16 % (0.17 mag) brighter. With that single scale
+factor, chi² = 16 for 16 points. Their paper does not state a cosmology; the
+distance here is from Planck 2018.
+
+**What ZTF alone measures.** The density, epsilon_B and viewing angle are held
+at Kumar et al.'s values, epsilon_e = 0.1 and xi_N = 1 as they had them, and
+the energy, opening angle and electron index are fitted. The posterior medians
+and 68 % intervals are:
+
+| | ZTF only, this pipeline | Kumar et al. (2022) |
+|---|---:|---:|
+| Electron index, p | 2.16 +0.02 −0.01 | 2.18 ± 0.03 |
+| Jet half-opening angle, θ_core (rad) | 0.022 +0.002 −0.004 | 0.024 +0.003 −0.002 |
+| Energy, log10 E0 (erg) | 54.16 +0.02 −0.02 | 54.06 ± 0.03 |
+| chi²/dof | 10.2/13 | |
+
+The electron index and the opening angle agree. The energy is 0.1 dex
+higher, which absorbs the 16 % offset in flux.
+
+The posterior has a tail toward narrower jets. Its autocorrelation time
+(about 140 steps) is longer than the emcee guideline allows for this chain
+(16 walkers × 8,000 steps). An independent shorter run gave the same intervals
+to within 0.01.
+
+<p align="center">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="figures/physical_posterior_dark.png">
+  <img src="figures/physical_posterior_light.png" alt="Corner plot of energy, opening angle and electron index from ZTF, with Kumar et al.'s values marked" width="70%">
+</picture>
+</p>
+
+**What it cannot measure.** With the density fixed and epsilon_B free as well,
+two densities 50 times apart fit equally well:
+
+| Density n0 (cm⁻³), fixed | log10 E0 | θ_core | p | log10 epsilon_B | chi²/dof |
+|---|---:|---:|---:|---:|---:|
+| 10⁻⁵·⁶⁷ (Kumar et al.) | 55.1 ± 0.3 | 0.023 ± 0.005 | 2.43 ± 0.22 | −2.8 ± 0.6 | 7.7/12 |
+| 10⁻⁴ | 53.3 ± 0.2 | 0.049 ± 0.007 | 2.40 ± 0.15 | −1.0 ± 0.5 | 7.7/12 |
+| 10⁻² | | | | | 210/12 |
+
+The energies differ by a factor of 50 and the opening angles by 2, and the
+electron index is now 2.4. A light curve in three optical bands measures two
+slopes and a break, and those leave energy, density, epsilon_B and p trading
+off against each other. Kumar et al. break the degeneracy with their X-ray and
+radio data. Only the dense case, 10⁻² cm⁻³, fails to fit at all.
 
 ## Limitations
 

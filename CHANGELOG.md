@@ -4,7 +4,12 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [semantic versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.5.0] - 2026-10-11
+
+The four roadmap items of 0.4: light curves from several instruments through
+their filter curves, near-infrared data, physical afterglow models, and a PSF
+and subtraction kernel that vary across full CCD frames. Also two corrections
+to 0.4.0 results.
 
 ### Added
 - `grb_afterglow.filters`: a registry of 35 system transmission curves (ZTF,
@@ -31,8 +36,32 @@ All notable changes to this project are documented here. The format follows
   `moves` and `spread_break`.
 - `plot_spectrum`: the broadband spectrum of a multi-instrument fit at one
   time, as observed and with the Galactic dust removed, with residuals.
-- GRB 221009A: the spectral index from Liverpool, Lowell and Gemini photometry
-  from g to Ks (O'Connor et al. 2023), 0.66 ± 0.03 (stat) ± 0.13 (E(B−V)) ±
+- `grb_afterglow.physical`: physical afterglow models with `afterglowpy`
+  (optional extra `[models]`): top-hat and Gaussian jets at any redshift and
+  viewing angle behind Galactic dust, fitted by least squares (several starts,
+  covariance from steps matched to the uncertainties, because the model is
+  computed numerically) and sampled with `emcee` under the usual priors.
+- Full CCD frames: `PipelineConfig(tiles=(nx, ny))`.
+  - `subtract_images(..., tiles=)` fits a kernel per tile and interpolates it
+    across the frame (`DifferenceImage.kernel_at`).
+  - `build_spatial_psf` and `psf_photometry_tiled` give a `SpatialPSF`, whose
+    Moffat parameters are planes in position, fitted jointly to all PSF stars
+    and kept only where significant. The scene is fitted tile by tile, each
+    source with the PSF at its own position.
+  - Kernel fits on large regions use the pixels near stars plus a sample of
+    sky.
+  - `dev/full_frame` runs a full 3072 x 3080 ZTF quadrant.
+- GRB 210204A, `physical_model.py`:
+  - Kumar et al.'s published top-hat jet describes the ZTF light curve up to
+    one flux scale (16 %).
+  - With their density and epsilon_B, ZTF alone gives p = 2.16 and
+    theta_core = 0.022 (theirs: 2.18 and 0.024).
+  - With epsilon_B free and the density fixed at values 50 times apart
+    (10^-5.67 and 10^-4 cm^-3), the fits are equally good: energy, density and
+    epsilon_B are degenerate in optical data.
+- `query_panstarrs(..., constraints=)` for wide searches.
+- GRB 221009A: the spectral index from Liverpool (Laskar et al. 2023), Lowell
+  and Gemini (O'Connor et al. 2023) photometry from g to Ks, 0.66 ± 0.03 (stat) ± 0.13 (E(B−V)) ±
   0.05 (photometric system), in agreement with O'Connor et al. (0.1σ) and
   Laskar et al. (0.7σ). The near infrared shrinks the ambiguity of which
   photometric system the published optical magnitudes are in from 0.46 vs 0.91
@@ -215,6 +244,7 @@ the first application to real telescope data.
 - Initial calibration, detection, aperture photometry, zero-point, light-curve,
   fitting, plotting, and synthetic-data modules, a demo script, and tests.
 
+[0.5.0]: https://github.com/Harishik/photons-to-power-laws/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/Harishik/photons-to-power-laws/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Harishik/photons-to-power-laws/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Harishik/photons-to-power-laws/compare/v0.1.0...v0.2.0

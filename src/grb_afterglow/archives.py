@@ -106,13 +106,15 @@ def query_panstarrs(
     *,
     bands: str = "grizy",
     min_detections: int = 5,
+    constraints: Mapping[str, float] | None = None,
     timeout: float = 120.0,
 ) -> Table:
     """Cone search of the Pan-STARRS1 DR1 mean-photometry catalog at MAST.
 
     Returns a table with ``ra``, ``dec`` (deg) and, per band, PSF magnitudes
     ``g``, ``g_err``, ... (AB). Missing photometry (``-999`` in the archive)
-    becomes NaN.
+    becomes NaN. ``constraints`` adds MAST filters such as
+    ``{"rMeanPSFMag.lte": 19.0}``, which keep a wide search manageable.
     """
     columns = ["objID", "raMean", "decMean", "nDetections"]
     for b in bands:
@@ -124,6 +126,7 @@ def query_panstarrs(
             "radius": radius_arcmin / 60.0,
             "nDetections.gte": min_detections,
             "columns": "[" + ",".join(columns) + "]",
+            **(constraints or {}),
         }
     )
     raw = Table.read(io.BytesIO(_get(f"{MAST_PS1_URL}?{query}", timeout=timeout)), format="ascii.csv")

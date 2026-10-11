@@ -43,7 +43,7 @@ from .photometry import (
     forced_photometry,
     instrumental_magnitude,
 )
-from .psf import ConvolvedPSF, EmpiricalPSF, forced_psf_flux, psf_photometry
+from .psf import ConvolvedPSF, EmpiricalPSF, SpatialPSF, forced_psf_flux, psf_photometry, psf_photometry_tiled
 from .subtraction import DifferenceImage, subtract_images
 from .zeropoint import ZeroPoint, compute_zeropoint, match_sky
 
@@ -71,6 +71,14 @@ class PipelineConfig:
     given, at the median colour of the calibration stars. A third and fourth
     element fix the slope and its uncertainty (``("g", "r", 0.14, 0.01)``),
     e.g. when it has been measured once from many frames.
+
+    ``tiles = (nx, ny)`` is for full CCD frames, whose PSF changes across the
+    field. With ``photometry="psf"`` the PSF varies smoothly over the frame
+    (:func:`~grb_afterglow.psf.build_spatial_psf`) and the scene is fitted in
+    ``nx`` by ``ny`` tiles; image subtraction fits a kernel in each tile and
+    interpolates it; the burst is measured with the PSF and kernel at its
+    position. With aperture photometry only the kernel is tiled. Cutouts a few
+    arcminutes across do not need it.
     """
 
     fwhm_guess: float = 3.5
@@ -87,10 +95,13 @@ class PipelineConfig:
     photometry: str = "aperture"
     color_terms: Mapping[str, tuple] = field(default_factory=dict)
     target_color: float | Mapping[str, float] | None = None
+    tiles: tuple[int, int] | None = None
 
     def __post_init__(self) -> None:
         if self.photometry not in ("aperture", "psf"):
             raise ValueError(f"photometry must be 'aperture' or 'psf', not {self.photometry!r}.")
+        if self.tiles is not None and (len(self.tiles) != 2 or min(self.tiles) < 1):
+            raise ValueError("tiles must be two positive integers (nx, ny).")
 
 
 @dataclass
@@ -145,7 +156,7 @@ class FrameResult:
     path: str | None = None
     difference: DifferenceImage | None = field(default=None, repr=False)
     photometry: str = "aperture"
-    psf: EmpiricalPSF | None = field(default=None, repr=False)
+    psf: EmpiricalPSF | SpatialPSF | None = field(default=None, repr=False)
 
     @property
     def subtracted(self) -> bool:
@@ -327,7 +338,12 @@ def reduce_frame(
         psf_image = _mask_saturated(image, saturation, cfg.saturation_fraction)
         with_burst = template is None
         positions = np.vstack([[tx, ty], star_xy]) if with_burst else star_xy
-        phot = psf_photometry(psf_image, positions, source_xy=det_xy, fwhm=fwhm, gain=gain)
+        if cfg.tiles is not None:
+            phot = psf_photometry_tiled(
+                psf_image, positions, source_xy=det_xy, fwhm=fwhm, gain=gain, tiles=tuple(cfg.tiles)
+            )
+        else:
+            phot = psf_photometry(psf_image, positions, source_xy=det_xy, fwhm=fwhm, gain=gain)
         psf = phot.psf
         star_counts, star_counts_err = phot.flux[with_burst:], phot.flux_err[with_burst:]
     else:
@@ -471,13 +487,16 @@ def _measure_on_difference(image, wcs, template, tx, ty, fwhm, sky_mask, stars, 
     avoided: in a deep, crowded template the light of neighbouring stars
     inflates their large-aperture "total" fluxes.
     """
-    diff = subtract_images(image, wcs, template.image, template.wcs, science_fwhm=fwhm, template_fwhm=template.fwhm)
+    diff = subtract_images(
+        image, wcs, template.image, template.wcs, science_fwhm=fwhm, template_fwhm=template.fwhm, tiles=cfg.tiles
+    )
     mask = sky_mask | ~diff.valid
     ratio = 1.0
     if cfg.photometry == "psf":
         # The science PSF, through the matching kernel if the science image was the one convolved: exact,
         # and normalised to total flux like the zero-point stars' PSF fluxes, so no transfer is needed.
-        psf_d = psf if diff.psf_from == "science" else ConvolvedPSF(psf, diff.kernel, diff.fwhm)
+        local = psf.at(tx, ty) if isinstance(psf, SpatialPSF) else psf
+        psf_d = local if diff.psf_from == "science" else ConvolvedPSF(local, diff.kernel_at(tx, ty), diff.fwhm)
         fit = forced_psf_flux(diff.data, tx, ty, psf_d, mask=mask, gain=gain)
         burst = _psf_result(tx, ty, fit.flux, fit.flux_err, exptime, fit.background)
         net, net_err = fit.flux, fit.flux_err

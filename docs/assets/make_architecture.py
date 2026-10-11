@@ -69,14 +69,14 @@ STAGES = [
         "title": "Image Subtraction",
         "icon": "subtract",
         "color": "teal",
-        "steps": ["Resample template via WCS", "__KERNEL__", "Difference image", "Noise from blank positions"],
+        "steps": ["Resample template via WCS", "__KERNEL__", "Per tile on full frames", "Noise from blank positions"],
         "module": "subtraction.py",
     },
     {
         "title": "Photometry",
         "icon": "aperture",
         "color": "cyan",
-        "steps": ["Aperture, masked sky annulus", "__PSF__", "Forced at the burst", "Honest error bars"],
+        "steps": ["Aperture, masked sky annulus", "__PSF__", "PSF varying across the frame", "Forced at the burst"],
         "module": "photometry.py · psf.py",
     },
     {
@@ -92,19 +92,19 @@ STAGES = [
         "color": "orange",
         "steps": [
             "Single &amp; broken power law",
-            "Joint g r i fit with β",
+            "Joint fit across instruments, β",
+            "Through 35 filter curves",
             "Galactic &amp; host dust",
-            "MCMC posteriors",
-            "AIC / BIC comparison",
+            "MCMC or grid posteriors",
         ],
-        "module": "fitting · extinction · mcmc",
+        "module": "fitting · spectral · mcmc",
     },
     {
         "title": "Physics",
         "icon": "physics",
         "color": "rose",
-        "steps": ["Closure relations", "Electron index p", "ISM or wind, jet break"],
-        "module": "closure.py",
+        "steps": ["Closure relations", "Electron index p", "ISM or wind, jet break", "afterglowpy jet models"],
+        "module": "closure · physical",
     },
     {
         "title": "Outputs",
@@ -128,15 +128,13 @@ VALIDATION = [
     ("check", "__TESTS__ tests, CI", "Python 3.10 to 3.13"),
 ]
 REAL = [
-    ("telescope", "GRB 221009A", "ZTF behind 4 mag of dust"),
+    ("telescope", "GRB 221009A", "ZTF + near-IR, 4 mag of dust"),
     ("lightcurve", "GRB 210204A", "ZTF g r i, jet break"),
     ("check", "Matches published results", "Laskar+23, O'Connor+23, Kumar+22"),
 ]
 ROADMAP = [
-    ("aperture", "Spatially varying PSF"),
-    ("telescope", "Multi-instrument light curves"),
-    ("physics", "Physical afterglow models"),
-    ("dust", "Near-infrared data"),
+    ("telescope", "X-ray &amp; radio in jet fits"),
+    ("dice", "Nested sampling"),
 ]
 
 # ----------------------------------------------------------------------------- icons (24x24, stroke)
@@ -348,7 +346,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--kernel", default="Bramich delta-basis kernel")
     parser.add_argument("--psf", default="Empirical PSF, deblended fit")
-    parser.add_argument("--tests", type=int, default=106)
+    parser.add_argument("--tests", type=int, default=126)
     parser.add_argument("--html-only", action="store_true")
     parser.add_argument("--out", type=Path, default=HERE)
     args = parser.parse_args()

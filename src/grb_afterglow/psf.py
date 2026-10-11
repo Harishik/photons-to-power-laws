@@ -19,6 +19,15 @@ covariance, include a PSF-model error measured on the PSF stars, and are
 inflated where the local residuals exceed the noise. The scene fit uses dense
 linear algebra, so it suits images with up to a few hundred sources.
 
+Across a full CCD frame the PSF changes with position, and a scene fit of
+thousands of stars would be too large anyway. :func:`build_spatial_psf` fits
+the frame tile by tile, to subtract neighbours and select PSF stars, and then
+fits one :class:`SpatialPSF` to the PSF stars of all tiles together: its
+Moffat parameters are planes in position, each gradient kept only if
+significant, and its empirical residual map is common to the frame.
+:func:`psf_photometry_tiled` then fits the scene tile by tile, every source
+with the PSF at its own position.
+
 On a difference image, where every static source has been subtracted, the
 transient is measured with :func:`forced_psf_flux` instead: a linear fit of the
 PSF and a local background whose noise is measured by applying the same
@@ -164,6 +173,149 @@ class ConvolvedPSF:
         return out
 
 
+SLOPE_T_MIN = 3.0  # significance a spatial PSF gradient needs to be kept
+
+
+class SpatialPSF:
+    """A PSF that varies across the frame.
+
+    The analytic part varies smoothly with position (DAOPHOT's variable PSF,
+    Stetson 1987, instead keeps the analytic function fixed and lets its
+    residual look-up tables vary linearly or quadratically): ``log alpha``, ``log(beta - 1)``, ``g1`` and ``g2``
+    of the Moffat profile are planes in ``(x, y)``, fitted jointly to the PSF
+    stars of the whole frame (each star with the profile at its own
+    position), and a gradient is kept only where it is significant. The
+    empirical residual map is common to the frame. ``plane[k]`` holds the
+    coefficients ``(c0, c_u, c_v)`` of parameter ``k`` in
+    ``u = (x - centre_x) / scale``, ``v = (y - centre_y) / scale``.
+    """
+
+    def __init__(self, plane, centre, scale, *, residual=None, half=0, oversample=2, model_error=0.0, n_stars=0):
+        self.plane = np.asarray(plane, dtype=float).reshape(4, 3)
+        self.centre = (float(centre[0]), float(centre[1]))
+        self.scale = float(scale)
+        self.residual, self.half, self.oversample = residual, int(half), int(oversample)
+        self.model_error, self.n_stars = float(model_error), int(n_stars)
+
+    def parameters(self, x, y) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """Moffat ``(alpha, beta, g1, g2)`` at positions ``(x, y)``."""
+        u = (np.asarray(x, dtype=float) - self.centre[0]) / self.scale
+        v = (np.asarray(y, dtype=float) - self.centre[1]) / self.scale
+        la, lb, g1, g2 = (c[0] + c[1] * u + c[2] * v for c in self.plane)
+        return np.exp(la), 1.0 + np.exp(lb), np.clip(g1, -0.5, 0.5), np.clip(g2, -0.5, 0.5)
+
+    def at(self, x: float, y: float) -> EmpiricalPSF:
+        """The PSF at pixel ``(x, y)``."""
+        alpha, beta, g1, g2 = (float(a) for a in self.parameters(x, y))
+        return EmpiricalPSF(
+            alpha, beta, g1, g2, self.residual, self.half, self.oversample, self.n_stars, self.model_error
+        )
+
+    def evaluate(self, dx, dy, x, y) -> np.ndarray:
+        """PSF values at offsets ``(dx, dy)`` from sources at ``(x, y)``, each with the PSF at its own position."""
+        dx, dy, x, y = (np.asarray(a, dtype=float) for a in np.broadcast_arrays(dx, dy, x, y))
+        model = moffat_pixel(dx, dy, *self.parameters(x, y))
+        if self.residual is None:
+            return model
+        idx, w = _bilinear(dx, dy, self.half, self.oversample)
+        res = (self.residual.ravel()[idx] * w).sum(axis=1).reshape(model.shape)
+        return (model + res) / (1.0 + self.residual.sum() / self.oversample**2)
+
+    def __call__(self, dx, dy) -> np.ndarray:
+        """The PSF at the reference position (for matched filtering)."""
+        return self.at(*self.centre)(dx, dy)
+
+    def shifted(self, x0: float, y0: float) -> SpatialPSF:
+        """The same PSF in the coordinates of a sub-image whose corner is at ``(x0, y0)``."""
+        return SpatialPSF(
+            self.plane,
+            (self.centre[0] - x0, self.centre[1] - y0),
+            self.scale,
+            residual=self.residual,
+            half=self.half,
+            oversample=self.oversample,
+            model_error=self.model_error,
+            n_stars=self.n_stars,
+        )
+
+    def fwhm_at(self, x, y) -> np.ndarray:
+        """FWHM (px) of the Moffat component at positions ``(x, y)``."""
+        alpha, beta, _, _ = self.parameters(x, y)
+        return 2.0 * alpha * np.sqrt(2.0 ** (1.0 / beta) - 1.0)
+
+    @property
+    def fwhm(self) -> float:
+        return float(self.fwhm_at(*self.centre))
+
+    @property
+    def gradients(self) -> dict[str, tuple[float, float]]:
+        """Fitted gradients ``(d/du, d/dv)`` of each parameter (zero where not significant)."""
+        names = ("log_alpha", "log_beta_minus_1", "g1", "g2")
+        return {n: (float(c[1]), float(c[2])) for n, c in zip(names, self.plane, strict=True)}
+
+
+def _fit_moffat_spatial(stamps, positions, centre, scale, start):
+    """Fit Moffat parameters that are planes in position jointly to all PSF-star stamps.
+
+    Like :func:`_fit_moffat` (variable projection over each star's flux and
+    sky), but every star is modelled with the profile at its own position.
+    Gradients are dropped one at a time, least significant first, until all
+    that remain exceed ``SLOPE_T_MIN`` sigma. Returns the ``(4, 3)`` plane
+    coefficients and the stars' sky offsets.
+    """
+    sid = np.concatenate([np.full(len(st[0]), i) for i, st in enumerate(stamps)])
+    dx, dy, c, w = (np.concatenate([st[k] for st in stamps]) for k in range(4))
+    pos = np.asarray(positions, dtype=float)
+    u = ((pos[:, 0] - centre[0]) / scale)[sid]
+    v = ((pos[:, 1] - centre[1]) / scale)[sid]
+    s11, s1c = np.bincount(sid, w), np.bincount(sid, w * c)
+
+    def linear(m):
+        smm, sm1, smc = np.bincount(sid, w * m * m), np.bincount(sid, w * m), np.bincount(sid, w * m * c)
+        det = smm * s11 - sm1**2
+        return (s11 * smc - sm1 * s1c) / det, (smm * s1c - sm1 * smc) / det
+
+    free = np.ones((4, 3), dtype=bool)
+    plane = np.zeros((4, 3))
+    plane[:, 0] = start
+    lo0, hi0 = np.array([np.log(0.2), np.log(0.2), -0.5, -0.5]), np.array([np.log(50.0), np.log(15.0), 0.5, 0.5])
+    while True:
+        keys, base = np.argwhere(free), plane.copy()
+
+        def full(p, keys=keys, base=base):
+            out = base.copy()
+            out[tuple(keys.T)] = p
+            return out
+
+        def model(p, full=full):
+            q = full(p)
+            la, lb, g1, g2 = (q[k, 0] + q[k, 1] * u + q[k, 2] * v for k in range(4))
+            g1, g2 = np.clip(g1, -0.5, 0.5), np.clip(g2, -0.5, 0.5)
+            return moffat_pixel(dx, dy, np.exp(la), 1.0 + np.exp(lb), g1, g2)
+
+        def resid(p, model=model):
+            m = model(p)
+            f, b = linear(m)
+            return np.sqrt(w) * (c - f[sid] * m - b[sid])
+
+        lo = np.array([lo0[k] if j == 0 else -2.0 for k, j in keys])
+        hi = np.array([hi0[k] if j == 0 else 2.0 for k, j in keys])
+        p0 = np.clip(plane[tuple(keys.T)], lo + 1e-6, hi - 1e-6)
+        sol = optimize.least_squares(resid, p0, bounds=(lo, hi), x_scale=0.1)
+        plane = full(sol.x)
+        slopes = [i for i, (_, j) in enumerate(keys) if j > 0]
+        if not slopes:
+            break
+        dof = max(len(sol.fun) - len(sol.x), 1)
+        cov = linalg.pinvh(sol.jac.T @ sol.jac) * float(np.sum(sol.fun**2) / dof)
+        t = np.abs(sol.x[slopes]) / np.sqrt(np.maximum(np.diag(cov)[slopes], 1e-300))
+        if t.min() >= SLOPE_T_MIN:
+            break
+        k, j = keys[slopes[int(np.argmin(t))]]
+        free[k, j], plane[k, j] = False, 0.0
+    return plane, linear(model(sol.x))[1]
+
+
 @dataclass
 class PSFPhotometry:
     """Result of :func:`psf_photometry`.
@@ -175,7 +327,7 @@ class PSFPhotometry:
 
     flux: np.ndarray
     flux_err: np.ndarray
-    psf: EmpiricalPSF
+    psf: EmpiricalPSF | SpatialPSF
     xy: np.ndarray
 
 
@@ -205,6 +357,13 @@ def _tent_basis(shape, spacing):
     return sparse.kron(axes[0], axes[1], format="csr")
 
 
+def _psf_values(psf, dx, dy, xy, src):
+    """PSF at stamp offsets; a :class:`SpatialPSF` is evaluated at each pixel's own source position."""
+    if isinstance(psf, SpatialPSF):
+        return psf.evaluate(dx, dy, xy[src, 0], xy[src, 1])
+    return psf(dx, dy)
+
+
 def _scene_fit(data, var, xy, psf, half, basis, bkg_sigma, move=None, step=0.05):
     """Global weighted linear fit of all fluxes plus a smooth background correction.
 
@@ -213,7 +372,7 @@ def _scene_fit(data, var, xy, psf, half, basis, bkg_sigma, move=None, step=0.05)
     """
     shape = data.shape
     src, pix, dx, dy = _stamps(shape, xy, half)
-    val = psf(dx, dy)
+    val = _psf_values(psf, dx, dy, xy, src)
     fit_idx = np.flatnonzero(np.isfinite(var.ravel()))
     row_of = -np.ones(data.size, int)
     row_of[fit_idx] = np.arange(fit_idx.size)
@@ -225,7 +384,10 @@ def _scene_fit(data, var, xy, psf, half, basis, bkg_sigma, move=None, step=0.05)
         mv = use & move[src]
         col = np.cumsum(move) - 1
         for ddx, ddy in ((step, 0.0), (0.0, step)):
-            g = (psf(dx[mv] - ddx, dy[mv] - ddy) - psf(dx[mv] + ddx, dy[mv] + ddy)) / (2 * step)
+            g = (
+                _psf_values(psf, dx[mv] - ddx, dy[mv] - ddy, xy, src[mv])
+                - _psf_values(psf, dx[mv] + ddx, dy[mv] + ddy, xy, src[mv])
+            ) / (2 * step)
             blocks.append(sparse.csr_matrix((g, (row_of[pix[mv]], col[src[mv]])), shape=(n_fit, n_mv)))
     blocks.append(basis[fit_idx])
     a = sparse.hstack(blocks, format="csr")
@@ -329,12 +491,16 @@ def _fit_moffat(stamps, psf, fit_shape):
     return (float(np.exp(p[0])), float(1.0 + np.exp(p[1])), float(g[0]), float(g[1])), linear(model(p))[1]
 
 
-def _fit_residual(stamps, psf, half, oversample, smooth=1.0, ridge=0.02):
-    """Regularised least-squares fit of the oversampled empirical residual grid."""
+def _fit_residual(stamps, psf, half, oversample, smooth=1.0, ridge=0.02, moffat=None):
+    """Regularised least-squares fit of the oversampled empirical residual grid.
+
+    ``moffat`` gives the analytic profile at every stamp pixel directly (for a
+    spatially varying PSF); otherwise it is ``psf.moffat``.
+    """
     n = 2 * half * oversample + 1
     sid = np.concatenate([np.full(len(s[0]), i) for i, s in enumerate(stamps)])
     dx, dy, c, w = (np.concatenate([s[k] for s in stamps]) for k in range(4))
-    m = psf.moffat(dx, dy)
+    m = psf.moffat(dx, dy) if moffat is None else np.asarray(moffat, dtype=float)
     flux = np.bincount(sid, w * c * m) / np.bincount(sid, w * m * m)  # per-star flux, Moffat-normalised
     y = c / flux[sid] - m
     wt = w * flux[sid] ** 2
@@ -409,8 +575,12 @@ def _residual_sources(res, var, psf, xy, fwhm):
     return np.vstack(new) if new else np.zeros((0, 2))
 
 
-def _fit_scene(image, positions, source_xy, *, fwhm, var, gain, psf):
-    """Iterate scene fits, neighbour positions, residual sources and (unless ``psf`` is given) the PSF."""
+def _fit_scene(image, positions, source_xy, *, fwhm, var, gain, psf, state=None):
+    """Iterate scene fits, neighbour positions, residual sources and (unless ``psf`` is given) the PSF.
+
+    If ``state`` is a dict it receives the final scene fit, the background-subtracted
+    data, the variance and the source positions.
+    """
     data = np.asarray(image, float)
     pos = np.atleast_2d(np.asarray(positions, float)).reshape(-1, 2)
     det = np.atleast_2d(np.asarray(source_xy, float)).reshape(-1, 2)
@@ -474,6 +644,8 @@ def _fit_scene(image, positions, source_xy, *, fwhm, var, gain, psf):
         err = fit["err"] * np.sqrt(np.maximum(np.where(den > 0, num / den, 1.0), 1.0))
     out_f, out_e = np.full(len(pos), np.nan), np.full(len(pos), np.nan)
     out_f[good], out_e[good] = fit["flux"][inv.ravel()], err[inv.ravel()]
+    if state is not None:
+        state.update(fit=fit, data=resid0, var=v, xy=xy)
     return PSFPhotometry(out_f, out_e, psf, xy)
 
 
@@ -551,6 +723,133 @@ def psf_photometry(
             raise ValueError("Give fwhm or psf.")
         fwhm = psf.fwhm
     return _fit_scene(image, positions, source_xy, fwhm=float(fwhm), var=var, gain=gain, psf=psf)
+
+
+def build_spatial_psf(
+    image: np.ndarray,
+    source_xy: np.ndarray,
+    *,
+    fwhm: float,
+    tiles: tuple[int, int],
+    var: np.ndarray | None = None,
+    gain: float | None = None,
+    margin: float | None = None,
+) -> SpatialPSF:
+    """Build a :class:`SpatialPSF` from the stars of a full frame.
+
+    The frame is split into ``tiles = (nx, ny)`` tiles, each fitted as a scene
+    (with ``margin`` px around it, default ``max(15, 5 fwhm)``) to subtract
+    every star's neighbours and select PSF stars; the PSF model is then fitted
+    to the PSF stars of all tiles together.
+    """
+    from .subtraction import _tile_edges
+
+    data = np.asarray(image, dtype=float)
+    ny, nx = data.shape
+    src = np.atleast_2d(np.asarray(source_xy, float)).reshape(-1, 2)
+    margin = float(max(15.0, 5.0 * fwhm) if margin is None else margin)
+    xe, ye = _tile_edges(nx, int(tiles[0])), _tile_edges(ny, int(tiles[1]))
+    radius = max(3.0 * fwhm, 5.0)
+    stamps, positions, starts, local_psfs = [], [], [], []
+    for j in range(len(ye) - 1):
+        for i in range(len(xe) - 1):
+            x0, x1 = int(max(xe[i] - margin, 0)), int(min(xe[i + 1] + margin, nx))
+            y0, y1 = int(max(ye[j] - margin, 0)), int(min(ye[j + 1] + margin, ny))
+            inside = (src[:, 0] >= x0) & (src[:, 0] < x1) & (src[:, 1] >= y0) & (src[:, 1] < y1)
+            if not inside.any():
+                continue
+            sub_var = None if var is None else np.asarray(var, float)[y0:y1, x0:x1]
+            state: dict = {}
+            try:
+                res = _fit_scene(
+                    data[y0:y1, x0:x1], np.zeros((0, 2)), src[inside] - np.array([x0, y0], float),
+                    fwhm=float(fwhm), var=sub_var, gain=gain, psf=None, state=state,
+                )  # fmt: skip
+            except (ValueError, np.linalg.LinAlgError, RuntimeError):
+                continue
+            xy = state["xy"]
+            idx = _select_psf_stars(state["fit"], xy, res.psf, state["var"], fwhm)
+            gx, gy = xy[idx, 0] + x0, xy[idx, 1] + y0  # each PSF star once: in the tile it lies in
+            idx = idx[(gx >= xe[i]) & (gx < xe[i + 1]) & (gy >= ye[j]) & (gy < ye[j + 1])]
+            if len(idx) == 0:
+                continue
+            stamps += _star_stamps(state["data"], state["var"], state["fit"], xy, res.psf, idx, radius)
+            positions += list(xy[idx] + np.array([x0, y0], float))
+            starts.append([np.log(res.psf.alpha), np.log(res.psf.beta - 1.0), res.psf.g1, res.psf.g2])
+            local_psfs.append(res.psf)
+    if len(stamps) < 3:
+        raise RuntimeError("Too few PSF stars in the frame for a spatially varying PSF.")
+    centre, scale = ((nx - 1) / 2.0, (ny - 1) / 2.0), max(nx, ny) / 2.0
+    plane, sky = _fit_moffat_spatial(stamps, positions, centre, scale, np.median(starts, axis=0))
+    half, oversample = local_psfs[0].half, local_psfs[0].oversample
+    psf = SpatialPSF(plane, centre, scale, half=half, oversample=oversample, n_stars=len(stamps))
+    stamps = [(st[0], st[1], st[2] - b, st[3]) for st, b in zip(stamps, sky, strict=True)]
+    if len(stamps) >= 5:
+        inner = [tuple(a[np.hypot(st[0], st[1]) <= half] for a in st) for st in stamps]
+        moffat = np.concatenate([psf.at(*xy).moffat(st[0], st[1]) for st, xy in zip(inner, positions, strict=True)])
+        psf.residual = _fit_residual(inner, None, half, oversample, moffat=moffat)
+    excess = []
+    for (dx, dy, c, w), xy in zip(stamps, positions, strict=True):
+        m_all = psf.at(*xy)(dx, dy)
+        core = np.hypot(dx, dy) <= 1.5 * fwhm
+        m = np.sum(w * c * m_all) / np.sum(w * m_all * m_all) * m_all[core]
+        excess.append(np.sum((c[core] - m) ** 2 - 1.0 / w[core]) / np.sum(m * m))
+    psf.model_error = float(np.sqrt(max(np.median(excess), 0.0))) if len(excess) >= 3 else 0.0
+    return psf
+
+
+def psf_photometry_tiled(
+    image: np.ndarray,
+    positions: np.ndarray,
+    *,
+    source_xy: np.ndarray,
+    fwhm: float,
+    tiles: tuple[int, int],
+    psf: SpatialPSF | None = None,
+    var: np.ndarray | None = None,
+    gain: float | None = None,
+    margin: float | None = None,
+) -> PSFPhotometry:
+    """:func:`psf_photometry` with a PSF that varies across the frame, for full CCD frames.
+
+    Builds a :class:`SpatialPSF` (:func:`build_spatial_psf`) unless one is
+    given, then measures the positions tile by tile (``tiles = (nx, ny)``): each
+    tile's positions in a scene fit of every source within ``margin`` of the
+    tile, every source with the PSF at its own position. Returns a
+    :class:`PSFPhotometry` whose ``psf`` is the :class:`SpatialPSF`.
+    """
+    from .subtraction import _tile_edges
+
+    data = np.asarray(image, dtype=float)
+    ny, nx = data.shape
+    pos = np.atleast_2d(np.asarray(positions, float)).reshape(-1, 2)
+    src = np.atleast_2d(np.asarray(source_xy, float)).reshape(-1, 2)
+    margin = float(max(15.0, 5.0 * fwhm) if margin is None else margin)
+    if psf is None:
+        psf = build_spatial_psf(data, src, fwhm=fwhm, tiles=tiles, var=var, gain=gain, margin=margin)
+    xe, ye = _tile_edges(nx, int(tiles[0])), _tile_edges(ny, int(tiles[1]))
+    col = np.clip(np.searchsorted(xe, pos[:, 0], side="right") - 1, 0, len(xe) - 2)
+    row = np.clip(np.searchsorted(ye, pos[:, 1], side="right") - 1, 0, len(ye) - 2)
+    flux, flux_err = np.full(len(pos), np.nan), np.full(len(pos), np.nan)
+    fitted = []
+    for j in range(len(ye) - 1):
+        for i in range(len(xe) - 1):
+            mine = (col == i) & (row == j)
+            if not mine.any():
+                continue
+            x0, x1 = int(max(xe[i] - margin, 0)), int(min(xe[i + 1] + margin, nx))
+            y0, y1 = int(max(ye[j] - margin, 0)), int(min(ye[j + 1] + margin, ny))
+            inside = (src[:, 0] >= x0) & (src[:, 0] < x1) & (src[:, 1] >= y0) & (src[:, 1] < y1)
+            shift = np.array([x0, y0], float)
+            sub_var = None if var is None else np.asarray(var, float)[y0:y1, x0:x1]
+            res = _fit_scene(
+                data[y0:y1, x0:x1], pos[mine] - shift, src[inside] - shift,
+                fwhm=float(fwhm), var=sub_var, gain=gain, psf=psf.shifted(x0, y0),
+            )  # fmt: skip
+            flux[mine], flux_err[mine] = res.flux, res.flux_err
+            fitted.append(res.xy + shift)
+    xy = np.vstack(fitted) if fitted else src
+    return PSFPhotometry(flux, flux_err, psf, xy)
 
 
 @dataclass

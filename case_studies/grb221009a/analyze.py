@@ -75,7 +75,7 @@ LASKAR_BETA = (0.76, 0.04)  # NIR to optical at ~4.4 d, Galactic extinction remo
 SED_WINDOW_DAYS = (1.7, 20.0)
 SED_REFERENCE_DAYS = 4.4  # the Gemini optical + NIR epoch
 NIR_FILTERS = ("J", "H", "Ks")
-# Zero-point uncertainty per band: optical photometry calibrated to Pan-STARRS1 without colour terms, NIR to 2MASS
+# Zero-point uncertainty per band: optical photometry calibrated without colour terms (Pan-STARRS1), NIR to 2MASS
 # and converted from Vega to AB.
 CALIBRATION_PRIOR_MAG = {"optical": 0.03, "nir": 0.05}
 

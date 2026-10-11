@@ -4,7 +4,8 @@
 #         doi:10.1126/sciadv.adi1405. Values transcribed from the table "Log of optical and infrared observations"
 #         in the supplementary material of arXiv:2302.07906 (LaTeX source), all 45 rows.
 # time_days: since the Fermi/GBM trigger (2022-10-09 13:16:59 UT). mag: AB, not corrected for Galactic extinction.
-# LMI and GMOS-S photometry is calibrated to Pan-STARRS1; Flamingos-2 and WIRC to 2MASS (converted from Vega to AB).
+# The paper calibrates LMI to Pan-STARRS1 and WIRC to 2MASS; for Gemini it describes calibration to 2MASS stars with a
+# Vega-to-AB conversion (which applies to the Flamingos-2 near-infrared bands).
 # band: the filter curve used to model the measurement (see analyze.py; LMI uses the SDSS curves as a proxy).
 time_days,telescope,instrument,filter,band,exposure_s,mag,mag_err
 3.6,LDT,LMI,g,lmi:g,1050,22.06,0.04

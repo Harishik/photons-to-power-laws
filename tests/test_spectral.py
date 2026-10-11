@@ -127,3 +127,27 @@ def test_posterior_with_calibration_offsets():
         med, lo, hi = post.interval(name)
         assert med == pytest.approx(fit.params[name], abs=0.5 * fit.errors[name])
         assert 0.5 * (hi - lo) == pytest.approx(fit.errors[name], rel=0.3)
+
+
+def test_dusty_fit_extrapolates_to_xray_and_radio():
+    """Forward-modelled Galactic dust must not stop a fit from being evaluated far from the optical."""
+    lc = _multi_instrument(offsets={})
+    fit = fit_lightcurve(lc, "single", reference_band="lt:r", ebv_mw=1.3)
+    model = fit.spectral
+    lam = np.array([150.0, 617.0, 3333.0, 3334.0])
+    assert model.galactic_extinction(lam[:3]) == pytest.approx(3.1 * 1.3 * ccm89(lam[:3]))
+    assert model.galactic_extinction(lam[3]) == pytest.approx(model.galactic_extinction(lam[2]), rel=1e-3)
+    xray, radio = fit.predict(np.array([6e5]), 2.418e17), fit.predict(np.array([6e5]), 1e10)
+    p = fit.params
+    no_dust = fit.temporal(np.array([6e5]))[0] * (2.418e17 / fit.nu_ref) ** -p["beta"]
+    assert xray[0] == pytest.approx(no_dust, rel=1e-9)
+    assert np.isfinite(radio[0]) and radio[0] > 0
+
+
+def test_quadrature_does_not_depend_on_the_curve_normalisation():
+    bp = get_bandpass("sdss:g")
+    scaled = Bandpass("scaled:g", bp.wavelength_nm, bp.transmission * 1.5e-4)
+    model = SpectralModel(500.0, ebv_mw=1.32, bandpasses={"g": bp, "scaled:g": scaled})
+    assert model.band_factors(["scaled:g"], 0.66)[0] == pytest.approx(model.band_factors(["g"], 0.66)[0], rel=1e-12)
+    with pytest.raises(ValueError, match="no positive transmission"):
+        SpectralModel(500.0, bandpasses={"dark": Bandpass("dark", bp.wavelength_nm, 0 * bp.transmission)}).grid("dark")

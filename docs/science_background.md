@@ -175,6 +175,41 @@ on the ZTF frames: real PSFs need the empirical part. On a difference image the 
 fitted with the same PSF and a local background, and its error comes from the
 scatter of identical fits at blank positions.
 
+## Full frames: a PSF and kernel that change across the field
+
+Over a cutout a few arcminutes across the PSF is effectively constant. Over a
+full CCD it is not: optics and focus make the seeing, and the shape of the
+stars, drift across the frame. A single PSF then mis-measures stars far from
+where it was built, and a single matching kernel leaves residuals of every
+star away from the centre.
+
+For full frames (`PipelineConfig(photometry="psf", tiles=(nx, ny))`) the PSF
+varies smoothly with position, as DAOPHOT's variable PSF does (Stetson 1987),
+though there the residual look-up tables vary rather than the analytic profile. The Moffat width,
+index and ellipticity are planes in `(x, y)`, fitted jointly to the PSF stars
+of the whole frame, each star with the profile at its own position, and the
+empirical residual map is shared. A gradient is kept only if it is
+significant, so noise in a few tiles does not invent one. The frame is fitted
+tile by tile, which also keeps every scene fit small enough for thousands of
+stars.
+
+The subtraction kernel is fitted in every tile. The kernel at any pixel is the
+bilinear interpolation of the kernels of the surrounding tile centres.
+Convolution is linear, so convolving with that interpolated kernel is the
+same as blending the tile convolutions with the same weights, which is how it
+is computed. This is the approach of Alard (2000), with tiles in place of a
+polynomial in position.
+
+Synthetic tests check both parts:
+
+- **PSF.** With the seeing changing by 20 % across the frame, the gradient
+  is found, the FWHM is right to 4 % in the corners, and the fluxes are right
+  to 1 %. In a uniform field no gradient is found, and the result equals the
+  single-PSF one.
+- **Kernel.** With the science seeing changing from 2.6 to 4.2 px, residuals
+  of static stars fall from 6 to about 2 σ with 3 × 3 tiles, and the
+  transient keeps its flux.
+
 ## Colour terms
 
 A survey's filters never match the catalog's exactly, so stars of different
@@ -206,7 +241,7 @@ because the reddened source puts most of its photons in the red side of a
 broad band. And the wavelength must be the actual filter's: for GRB 221009A
 (`E(B − V) = 1.32`, `A_V ≈ 4.1`), using SDSS rather than Liverpool IO:O pivot
 wavelengths moves the g-band pivot by 13 nm and overcorrects g by 0.18 mag
-(i by 0.09), which lowers `β` by 0.08; evaluating the extinction at the pivot
+(i by 0.09), which lowers `β` by 0.05; evaluating the extinction at the pivot
 instead of averaging over the filter lowers it by another 0.08. Even done
 properly, `β` from optical bands alone is dominated by the uncertainty of the
 dust: ±0.06 in `E(B − V)` moves `β` from Liverpool's griz by ±0.18.
@@ -241,6 +276,39 @@ or 0.91. Near-infrared bands, where the dust is weak, fix the slope over a
 factor of four in wavelength and shrink that ambiguity to 0.66 against 0.76.
 They help less with the dust itself: E(B − V) ± 0.06 still moves `β` by ±0.13,
 compared with ±0.18 for griz alone.
+
+## Physical afterglow models
+
+Closure relations connect the two measured slopes to the electron index `p`
+and the environment. A physical model of the blast wave goes further. It
+predicts the full light curve at every frequency from:
+
+- the isotropic-equivalent kinetic energy `E0` along the jet axis (the jet's
+  true energy is smaller by about `θ_core²/2`);
+- the density `n0` around it;
+- the jet's half-opening angle `θ_core` and our viewing angle `θ_obs`;
+- the electron index `p`;
+- the fractions `ε_e` and `ε_B` of the shock energy in electrons and
+  magnetic field.
+
+`grb_afterglow.physical` evaluates such models with `afterglowpy` (Ryan et
+al. 2020), which computes the synchrotron emission of a structured jet,
+top-hat or Gaussian, including the jet break and viewing-angle effects. The
+models are fitted by least squares and MCMC, with the usual priors: uniform in
+the logarithms of `E0`, `n0` and `ε_B`, uniform in `p` and `θ_core`, and
+`∝ sin θ_obs` for randomly oriented jets.
+
+The light curve in a few optical bands measures little more than two slopes
+and a break time. That is three numbers for seven parameters. Energy, density
+and `ε_B` therefore trade off along a ridge that only X-ray and radio data, or
+fixed values, can resolve. GRB 210204A shows this:
+
+- With `n0` and `ε_B` held at the values Kumar et al. (2022) derived from
+  radio, X-ray and optical data, the ZTF light curve alone gives their `p` and
+  `θ_core`.
+- With `ε_B` free as well, `p` near 2.4 fits just as well.
+- With `n0` fixed instead at 10⁻⁵·⁶⁷ or 10⁻⁴ cm⁻³, the fits are equally good,
+  with energies fifty times apart.
 
 ## Bayesian posteriors
 
@@ -288,6 +356,8 @@ point, and samples are drawn from the result.
 - Schlafly & Finkbeiner 2011, ApJ 737, 103: recalibrated Galactic dust map.
 - Goodman & Weare 2010, CAMCoS 5, 65; Foreman-Mackey et al. 2013, PASP 125, 306:
   affine-invariant ensemble sampling and `emcee`.
+- Ryan et al. 2020, ApJ 896, 166: `afterglowpy`, afterglows of structured jets.
+- Alard 2000, A&AS 144, 363: image subtraction with a spatially varying kernel.
 - O'Connor et al. 2023, Science Advances 9, eadi1405; Shrestha et al. 2023,
   arXiv:2302.03829: the spectral index of, and the extinction toward, GRB 221009A.
 - Kumar et al. 2022, MNRAS, arXiv:2204.07587: the afterglow and late flares of GRB 210204A.
